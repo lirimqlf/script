@@ -28,7 +28,7 @@ const ColdCallApp = () => {
   });
 
 const defaultScript = {
-    name: "Security Awareness Demo",
+    name: "Discord Insider",
     nodes: {
       start: {
         id: "start",
