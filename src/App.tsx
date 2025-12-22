@@ -291,7 +291,7 @@ const ColdCallApp = () => {
             <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
               <Phone size={20} className="text-black" />
             </div>
-            {sidebarOpen && <span className="font-bold text-lg">SaaS</span>}
+            {sidebarOpen && <span className="font-bold text-lg">@Vaulted</span>}
           </div>
 
           <nav className="space-y-2">
