@@ -27,7 +27,7 @@ const ColdCallApp = () => {
     timezone: ''
   });
 
-  cconst defaultScript = {
+const defaultScript = {
     name: "Security Awareness Demo",
     nodes: {
       start: {
