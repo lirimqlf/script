@@ -28,7 +28,7 @@ const ColdCallApp = () => {
   });
 
 const defaultScript = {
-    name: "Discord Insider",
+    name: "Security Awareness Demo",
     nodes: {
       start: {
         id: "start",
@@ -47,12 +47,12 @@ const defaultScript = {
         id: "greeting",
         text: "Alright, perfect. How are you doing today, [First Name]?",
         responses: [
-          { label: "Continue", nextId: "opportunity_intro", sentiment: "neutral" }
+          { label: "Continue", nextId: "opportunity_intro", sentiment: "positive" }
         ]
       },
       opportunity_intro: {
         id: "opportunity_intro",
-        text: "I'm calling today because I have an opportunity for you to work with me. It's pretty simple and won't take much of your time. The revenue can range from $500 to $2,000 in a single week, depending on the work. And It's related to your job at Discord. Will you be interrested ?",
+        text: "I'm calling today because I have an opportunity for you to work with me. It's pretty simple and won't take much of your time. The revenue can range from $500 to $2,000 in a single week, depending on the work. It's related to your job at Discord.",
         responses: [
           { label: "Not interested", nextId: "refusal_1", sentiment: "negative" },
           { label: "Interested", nextId: "okta_question", sentiment: "positive" }
@@ -62,8 +62,8 @@ const defaultScript = {
         id: "refusal_1",
         text: "Are you sure? It's really easy, and I'm serious — this isn't a scam.",
         responses: [
-          { label: "Still no", nextId: "end_polite", sentiment: "positive" },
-          { label: "Okay, continue", nextId: "okta_question", sentiment: "negative" }
+          { label: "Still no", nextId: "end_polite", sentiment: "negative" },
+          { label: "Okay, continue", nextId: "okta_question", sentiment: "positive" }
         ]
       },
       end_polite: {
@@ -73,7 +73,7 @@ const defaultScript = {
       },
       okta_question: {
         id: "okta_question",
-        text: "Basically, the job is just to use your discord Okta panel and you get paid. Do you use it often ?",
+        text: "Basically, the work is that you continue doing your usual job, but with a tool you already have access to. Do you use the Discord Okta panel?",
         responses: [
           { label: "No", nextId: "okta_explain", sentiment: "neutral" },
           { label: "Yes", nextId: "okta_known", sentiment: "positive" }
@@ -84,14 +84,14 @@ const defaultScript = {
         text: "Okay, I'll explain it in the simplest way possible. In this panel, there's a category called 'User Profile Requests'. In this category, you can assign badges. That's where you'd be working.",
         responses: [
           { label: "I don't understand", nextId: "okta_simpler", sentiment: "neutral" },
-          { label: "I understand", nextId: "badge_awareness", sentiment: "negative" }
+          { label: "I understand", nextId: "badge_awareness", sentiment: "positive" }
         ]
       },
       okta_simpler: {
         id: "okta_simpler",
         text: "You just go to the panel and follow the steps I guide you through.",
         responses: [
-          { label: "Continue", nextId: "badge_awareness", sentiment: "neutral" }
+          { label: "Continue", nextId: "badge_awareness", sentiment: "positive" }
         ]
       },
       okta_known: {
@@ -106,7 +106,7 @@ const defaultScript = {
         id: "badge_explain",
         text: "Basically, you can assign badges to user profiles.",
         responses: [
-          { label: "Continue", nextId: "badge_offer", sentiment: "neutral" }
+          { label: "Continue", nextId: "badge_offer", sentiment: "positive" }
         ]
       },
       badge_offer: {
@@ -121,7 +121,7 @@ const defaultScript = {
         id: "badge_definition",
         text: "A badge is a small icon on a Discord profile. Some are common, and some are rare.",
         responses: [
-          { label: "Continue", nextId: "badge_value", sentiment: "neutral" }
+          { label: "Continue", nextId: "badge_value", sentiment: "positive" }
         ]
       },
       badge_value: {
@@ -129,14 +129,14 @@ const defaultScript = {
         text: "Some badges are considered rare. What I want you to do is assign the badge I ask for, and you'll be paid depending on the badge.",
         responses: [
           { label: "I don't understand", nextId: "simplify_offer", sentiment: "neutral" },
-          { label: "I understand", nextId: "price_list", sentiment: "negative" }
+          { label: "I understand", nextId: "price_list", sentiment: "positive" }
         ]
       },
       simplify_offer: {
         id: "simplify_offer",
         text: "You assign a badge to my account, and I pay you.",
         responses: [
-          { label: "No", nextId: "money_pressure", sentiment: "positive" },
+          { label: "No", nextId: "money_pressure", sentiment: "negative" },
           { label: "Yes", nextId: "price_list", sentiment: "positive" }
         ]
       },
@@ -144,20 +144,21 @@ const defaultScript = {
         id: "money_pressure",
         text: "Are you sure? I can pay a lot of money. I could even double your monthly salary every week if we work well together.",
         responses: [
-          { label: "Still no", nextId: "end_polite", sentiment: "positive" }
+          { label: "Still no", nextId: "end_polite", sentiment: "negative" },
+          { label: "Okay, tell me more", nextId: "price_list", sentiment: "positive" }
         ]
       },
       price_list: {
         id: "price_list",
         text: "The badge prices range from $50 to $2,000. Early Supporter is $50, Early Developer is $100, HypeSquad Events is $300, Partner is $500, Alumni Mod is $700, Green Bug Hunter is $900, and Golden Bug Hunter ranges from $1,000 to $2,000.",
         responses: [
-          { label: "Sounds good", nextId: "switch_app", sentiment: "negative" },
-          { label: "No", nextId: "money_pressure", sentiment: "positive" }
+          { label: "Sounds good", nextId: "switch_app", sentiment: "positive" },
+          { label: "No", nextId: "money_pressure", sentiment: "negative" }
         ]
       },
       switch_app: {
         id: "switch_app",
-        text: "I can't continue on this number since it's a burner phone. Do you use Telegram or Signal?",
+        text: "I can't continue on this number since it's temporary. Do you use Telegram or Signal?",
         responses: [
           { label: "Yes", nextId: "send_contact", sentiment: "positive" },
           { label: "No", nextId: "install_app", sentiment: "neutral" }
@@ -172,7 +173,8 @@ const defaultScript = {
         id: "install_app",
         text: "Would you like me to guide you through installing one of those apps so we can talk anonymously?",
         responses: [
-          { label: "No", nextId: "money_pressure", sentiment: "negative" }
+          { label: "No", nextId: "money_pressure", sentiment: "negative" },
+          { label: "Yes", nextId: "send_contact", sentiment: "positive" }
         ]
       },
       badge_awareness: {
