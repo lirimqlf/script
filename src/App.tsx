@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, BookOpen, Clock, X, RotateCcw, BarChart3, User, Upload, Download, TrendingUp, TrendingDown, Activity, Menu, Search } from 'lucide-react';
+import { Phone, BookOpen, Clock, X, RotateCcw, BarChart3, User, Upload, Download, TrendingUp, TrendingDown, Activity, Menu, LogOut, LogIn } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 const ColdCallApp = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [registerMode, setRegisterMode] = useState(false);
+  
   const [currentNode, setCurrentNode] = useState('start');
   const [callActive, setCallActive] = useState(false);
   const [callHistory, setCallHistory] = useState([]);
-  const [currentCall, setCurrentCall] = useState<any>(null);
-  const [scripts, setScripts] = useState<any[]>([]);
-  const [activeScript, setActiveScript] = useState<any>(null);
+  const [currentCall, setCurrentCall] = useState(null);
+  const [scripts, setScripts] = useState([]);
+  const [activeScript, setActiveScript] = useState(null);
   const [activeView, setActiveView] = useState('call');
   const [callNotes, setCallNotes] = useState('');
-  const [profile, setProfile] = useState<any>(null);
-  const [callPath, setCallPath] = useState<any[]>([]);
+  const [profile, setProfile] = useState(null);
+  const [callPath, setCallPath] = useState([]);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -27,7 +32,7 @@ const ColdCallApp = () => {
     timezone: ''
   });
 
-const defaultScript = {
+  const defaultScript = {
     name: "Security Awareness Demo",
     nodes: {
       start: {
@@ -188,12 +193,71 @@ const defaultScript = {
     }
   };
 
+  // Load user data on mount
   useEffect(() => {
-    if (scripts.length === 0) {
-      setScripts([defaultScript]);
-      setActiveScript(defaultScript);
+    const loadUserData = async () => {
+      if (isAuthenticated && currentUser) {
+        try {
+          // Load scripts
+          const scriptsResult = await window.storage.get(`user:${currentUser.username}:scripts`);
+          if (scriptsResult) {
+            const loadedScripts = JSON.parse(scriptsResult.value);
+            setScripts(loadedScripts);
+            if (loadedScripts.length > 0) {
+              setActiveScript(loadedScripts[0]);
+            }
+          } else {
+            setScripts([defaultScript]);
+            setActiveScript(defaultScript);
+          }
+
+          // Load call history
+          const historyResult = await window.storage.get(`user:${currentUser.username}:history`);
+          if (historyResult) {
+            setCallHistory(JSON.parse(historyResult.value));
+          }
+
+          // Load profile
+          const profileResult = await window.storage.get(`user:${currentUser.username}:profile`);
+          if (profileResult) {
+            const loadedProfile = JSON.parse(profileResult.value);
+            setProfile(loadedProfile);
+            setProfileForm(loadedProfile);
+          }
+        } catch (error) {
+          console.error('Error loading user data:', error);
+        }
+      }
+    };
+
+    loadUserData();
+  }, [isAuthenticated, currentUser]);
+
+  // Auto-save user data
+  useEffect(() => {
+    const saveUserData = async () => {
+      if (isAuthenticated && currentUser) {
+        try {
+          // Save scripts
+          await window.storage.set(`user:${currentUser.username}:scripts`, JSON.stringify(scripts));
+          
+          // Save call history
+          await window.storage.set(`user:${currentUser.username}:history`, JSON.stringify(callHistory));
+          
+          // Save profile
+          if (profile) {
+            await window.storage.set(`user:${currentUser.username}:profile`, JSON.stringify(profile));
+          }
+        } catch (error) {
+          console.error('Error saving user data:', error);
+        }
+      }
+    };
+
+    if (scripts.length > 0 || callHistory.length > 0 || profile) {
+      saveUserData();
     }
-  }, []);
+  }, [scripts, callHistory, profile, isAuthenticated, currentUser]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -202,10 +266,65 @@ const defaultScript = {
     return () => clearInterval(timer);
   }, []);
 
-  const getLocalTime = (city: string, state: string) => {
+  const handleLogin = async () => {
+    try {
+      const userResult = await window.storage.get(`auth:${loginForm.username}`);
+      
+      if (registerMode) {
+        // Register new user
+        if (userResult) {
+          alert('Username already exists');
+          return;
+        }
+        
+        const newUser = {
+          username: loginForm.username,
+          password: loginForm.password,
+          createdAt: new Date().toISOString()
+        };
+        
+        await window.storage.set(`auth:${loginForm.username}`, JSON.stringify(newUser));
+        setCurrentUser(newUser);
+        setIsAuthenticated(true);
+        setLoginForm({ username: '', password: '' });
+      } else {
+        // Login existing user
+        if (!userResult) {
+          alert('User not found');
+          return;
+        }
+        
+        const user = JSON.parse(userResult.value);
+        if (user.password !== loginForm.password) {
+          alert('Incorrect password');
+          return;
+        }
+        
+        setCurrentUser(user);
+        setIsAuthenticated(true);
+        setLoginForm({ username: '', password: '' });
+      }
+    } catch (error) {
+      console.error('Authentication error:', error);
+      alert('Authentication failed');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setCallHistory([]);
+    setScripts([]);
+    setActiveScript(null);
+    setProfile(null);
+    setCallActive(false);
+    setCurrentNode('start');
+  };
+
+  const getLocalTime = (city, state) => {
     if (!city || !state) return null;
 
-    const timezones: Record<string, string[]> = {
+    const timezones = {
       'ET': ['New York', 'Boston', 'Miami', 'Atlanta', 'Philadelphia'],
       'CT': ['Chicago', 'Houston', 'Dallas', 'Austin', 'San Antonio'],
       'MT': ['Denver', 'Phoenix', 'Salt Lake City', 'Albuquerque'],
@@ -234,7 +353,7 @@ const defaultScript = {
     });
   };
 
-  const replaceProfilePlaceholders = (text: string) => {
+  const replaceProfilePlaceholders = (text) => {
     if (!profile) return text;
     return text
       .replace(/\[First & Last Name\]/g, `${profile.firstName} ${profile.lastName}`)
@@ -258,7 +377,7 @@ const defaultScript = {
     setCallPath([]);
   };
 
-  const handleResponse = (response: any) => {
+  const handleResponse = (response) => {
     const updatedPath = [...callPath, {
       nodeId: currentNode,
       response: response.label,
@@ -276,12 +395,12 @@ const defaultScript = {
     }
   };
 
-  const endCall = (outcome: string) => {
+  const endCall = (outcome) => {
     const endTime = new Date().toISOString();
     const duration = Math.floor((new Date(endTime).getTime() - new Date(currentCall.startTime).getTime()) / 1000);
 
-    const positiveCount = currentCall.sentiments.filter((s: string) => s === 'positive').length;
-    const negativeCount = currentCall.sentiments.filter((s: string) => s === 'negative').length;
+    const positiveCount = currentCall.sentiments.filter(s => s === 'positive').length;
+    const negativeCount = currentCall.sentiments.filter(s => s === 'negative').length;
 
     const completedCall = {
       ...currentCall,
@@ -292,12 +411,12 @@ const defaultScript = {
       stats: {
         positive: positiveCount,
         negative: negativeCount,
-        neutral: currentCall.sentiments.filter((s: string) => s === 'neutral').length,
+        neutral: currentCall.sentiments.filter(s => s === 'neutral').length,
         sentimentScore: positiveCount - negativeCount
       }
     };
 
-    setCallHistory([completedCall, ...callHistory] as any);
+    setCallHistory([completedCall, ...callHistory]);
     setCallActive(false);
     setCurrentCall(null);
     setCurrentNode('start');
@@ -321,15 +440,54 @@ const defaultScript = {
     setShowProfileModal(false);
   };
 
+  const importProfile = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const importedProfile = JSON.parse(event.target.result);
+            setProfileForm(importedProfile);
+            setProfile(importedProfile);
+            alert('Profile imported successfully!');
+          } catch (error) {
+            alert('Invalid JSON file');
+          }
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  };
+
+  const exportProfile = () => {
+    if (!profile) {
+      alert('No profile to export');
+      return;
+    }
+    const dataStr = JSON.stringify(profile, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `profile_${profile.firstName}_${profile.lastName}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const importScript = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
-    input.onchange = (e: any) => {
+    input.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
-        reader.onload = (event: any) => {
+        reader.onload = (event) => {
           try {
             const importedScript = JSON.parse(event.target.result);
             setScripts([...scripts, importedScript]);
@@ -344,7 +502,7 @@ const defaultScript = {
     input.click();
   };
 
-  const exportScript = (script: any) => {
+  const exportScript = (script) => {
     const dataStr = JSON.stringify(script, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
@@ -355,7 +513,7 @@ const defaultScript = {
     URL.revokeObjectURL(url);
   };
 
-  const deleteScript = (scriptToDelete: any) => {
+  const deleteScript = (scriptToDelete) => {
     const updated = scripts.filter(s => s.name !== scriptToDelete.name);
     setScripts(updated);
     if (activeScript?.name === scriptToDelete.name && updated.length > 0) {
@@ -363,15 +521,113 @@ const defaultScript = {
     }
   };
 
+  const exportAllData = () => {
+    const allData = {
+      profile,
+      scripts,
+      callHistory,
+      exportDate: new Date().toISOString()
+    };
+    const dataStr = JSON.stringify(allData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `coldcall_backup_${currentUser.username}_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const importAllData = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          try {
+            const importedData = JSON.parse(event.target.result);
+            if (importedData.profile) setProfile(importedData.profile);
+            if (importedData.scripts) setScripts(importedData.scripts);
+            if (importedData.callHistory) setCallHistory(importedData.callHistory);
+            alert('Data imported successfully!');
+          } catch (error) {
+            alert('Invalid backup file');
+          }
+        };
+        reader.readAsText(file);
+      }
+    };
+    input.click();
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+        <div className="bg-neutral-950 rounded-3xl max-w-md w-full border border-neutral-800 overflow-hidden">
+          <div className="bg-neutral-900 border-b border-neutral-800 p-8 text-center">
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4">
+              <Phone size={32} className="text-black" />
+            </div>
+            <h1 className="text-3xl font-bold">@Vaulted</h1>
+            <p className="text-neutral-400 mt-2">Cold Call Management System</p>
+          </div>
+
+          <div className="p-8">
+            <div className="mb-6">
+              <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Username</label>
+              <input
+                type="text"
+                value={loginForm.username}
+                onChange={(e) => setLoginForm({...loginForm, username: e.target.value})}
+                className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
+                placeholder="Enter username"
+              />
+            </div>
+
+            <div className="mb-6">
+              <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Password</label>
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
+                className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
+                placeholder="Enter password"
+                onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              />
+            </div>
+
+            <button
+              onClick={handleLogin}
+              className="w-full px-6 py-4 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all mb-4 flex items-center justify-center gap-2"
+            >
+              <LogIn size={20} />
+              {registerMode ? 'CREATE ACCOUNT' : 'LOGIN'}
+            </button>
+
+            <button
+              onClick={() => setRegisterMode(!registerMode)}
+              className="w-full text-center text-sm text-neutral-400 hover:text-white transition-all"
+            >
+              {registerMode ? 'Already have an account? Login' : "Don't have an account? Register"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const currentNodeData = activeScript?.nodes[currentNode];
 
-  const wonCalls = callHistory.filter((c: any) => c.outcome === 'won').length;
-  const lostCalls = callHistory.filter((c: any) => c.outcome === 'lost').length;
-  const followUpCalls = callHistory.filter((c: any) => c.outcome === 'follow-up').length;
+  const wonCalls = callHistory.filter(c => c.outcome === 'won').length;
+  const lostCalls = callHistory.filter(c => c.outcome === 'lost').length;
+  const followUpCalls = callHistory.filter(c => c.outcome === 'follow-up').length;
   const totalCalls = callHistory.length;
   const winRate = totalCalls > 0 ? ((wonCalls / totalCalls) * 100).toFixed(1) : 0;
   const avgDuration = totalCalls > 0
-    ? Math.floor(callHistory.reduce((sum: number, c: any) => sum + (c.duration || 0), 0) / totalCalls)
+    ? Math.floor(callHistory.reduce((sum, c) => sum + (c.duration || 0), 0) / totalCalls)
     : 0;
 
   const outcomeData = [
@@ -380,14 +636,14 @@ const defaultScript = {
     { name: 'Follow-up', value: followUpCalls, color: '#CCCCCC' }
   ];
 
-  const sentimentData = callHistory.map((call: any) => ({
+  const sentimentData = callHistory.map(call => ({
     name: new Date(call.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     positive: call.stats?.positive || 0,
     negative: call.stats?.negative || 0,
     neutral: call.stats?.neutral || 0
   })).slice(-7);
 
-  const performanceData = callHistory.map((call: any, idx: number) => ({
+  const performanceData = callHistory.map((call, idx) => ({
     call: `Call ${idx + 1}`,
     duration: Math.floor(call.duration / 60),
     sentiment: call.stats?.sentimentScore || 0
@@ -395,7 +651,7 @@ const defaultScript = {
 
   const localTime = profile ? getLocalTime(profile.city, profile.state) : null;
 
-  const getInitials = (firstName: string, lastName: string) => {
+  const getInitials = (firstName, lastName) => {
     return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
   };
 
@@ -469,6 +725,14 @@ const defaultScript = {
                 <RotateCcw size={20} />
                 {sidebarOpen && <span className="font-medium">Reset</span>}
               </button>
+
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-full text-neutral-400 hover:text-white hover:bg-neutral-900 transition-all duration-200"
+              >
+                <LogOut size={20} />
+                {sidebarOpen && <span className="font-medium">Logout</span>}
+              </button>
             </div>
           </nav>
         </div>
@@ -492,6 +756,10 @@ const defaultScript = {
             </div>
 
             <div className="flex items-center gap-4">
+              <div className="px-4 py-2 bg-neutral-900 rounded-full">
+                <div className="text-xs text-neutral-400">Logged in as</div>
+                <div className="text-sm font-bold">{currentUser.username}</div>
+              </div>
               {profile && (
                 <div className="flex items-center gap-3 px-4 py-2 bg-neutral-900 rounded-full">
                   <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center">
@@ -599,7 +867,7 @@ const defaultScript = {
                         {currentNodeData?.responses && currentNodeData.responses.length > 0 && (
                           <div className="space-y-3">
                             <div className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-4">Response Options:</div>
-                            {currentNodeData.responses.map((response: any, idx: number) => (
+                            {currentNodeData.responses.map((response, idx) => (
                               <button
                                 key={idx}
                                 onClick={() => handleResponse(response)}
@@ -662,19 +930,19 @@ const defaultScript = {
                         <div className="bg-neutral-900 p-3 border border-neutral-800 rounded-2xl">
                           <div className="text-xs text-neutral-400 mb-1 font-bold">POS</div>
                           <div className="text-2xl font-bold">
-                            {currentCall.sentiments.filter((s: string) => s === 'positive').length}
+                            {currentCall.sentiments.filter(s => s === 'positive').length}
                           </div>
                         </div>
                         <div className="bg-neutral-900 p-3 border border-neutral-800 rounded-2xl">
                           <div className="text-xs text-neutral-400 mb-1 font-bold">NEG</div>
                           <div className="text-2xl font-bold">
-                            {currentCall.sentiments.filter((s: string) => s === 'negative').length}
+                            {currentCall.sentiments.filter(s => s === 'negative').length}
                           </div>
                         </div>
                         <div className="bg-neutral-900 p-3 border border-neutral-800 rounded-2xl">
                           <div className="text-xs text-neutral-400 mb-1 font-bold">NEU</div>
                           <div className="text-2xl font-bold">
-                            {currentCall.sentiments.filter((s: string) => s === 'neutral').length}
+                            {currentCall.sentiments.filter(s => s === 'neutral').length}
                           </div>
                         </div>
                       </div>
@@ -719,13 +987,29 @@ const defaultScript = {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Script Library</h2>
-                <button
-                  onClick={importScript}
-                  className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
-                >
-                  <Upload size={18} />
-                  IMPORT JSON
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={importScript}
+                    className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
+                  >
+                    <Upload size={18} />
+                    IMPORT SCRIPT
+                  </button>
+                  <button
+                    onClick={importAllData}
+                    className="px-6 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center gap-2"
+                  >
+                    <Upload size={18} />
+                    IMPORT BACKUP
+                  </button>
+                  <button
+                    onClick={exportAllData}
+                    className="px-6 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center gap-2"
+                  >
+                    <Download size={18} />
+                    EXPORT ALL
+                  </button>
+                </div>
               </div>
 
               <div className="grid gap-4">
@@ -778,7 +1062,7 @@ const defaultScript = {
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {callHistory.map((call: any) => (
+                  {callHistory.map(call => (
                     <div key={call.id} className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">
@@ -1088,6 +1372,23 @@ const defaultScript = {
                     className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
                   />
                 </div>
+              </div>
+
+              <div className="flex gap-4 mb-4">
+                <button
+                  onClick={importProfile}
+                  className="flex-1 px-6 py-4 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center justify-center gap-2"
+                >
+                  <Upload size={18} />
+                  IMPORT PROFILE
+                </button>
+                <button
+                  onClick={exportProfile}
+                  className="flex-1 px-6 py-4 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center justify-center gap-2"
+                >
+                  <Download size={18} />
+                  EXPORT PROFILE
+                </button>
               </div>
 
               <div className="flex gap-4">
