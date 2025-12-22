@@ -52,10 +52,10 @@ const defaultScript = {
       },
       opportunity_intro: {
         id: "opportunity_intro",
-        text: "I'm calling today because I have an opportunity for you to work with me. It's pretty simple and won't take much of your time. The revenue can range from $500 to $2,000 in a single week, depending on the work. It's related to your job at Discord.",
+        text: "I'm calling today because I have an opportunity for you to work with me. It's pretty simple and won't take much of your time. The revenue can range from $500 to $2,000 in a single week, depending on the work. And It's related to your job at Discord. Will you be interrested ?",
         responses: [
           { label: "Not interested", nextId: "refusal_1", sentiment: "negative" },
-          { label: "Interested", nextId: "okta_question", sentiment: "negative" }
+          { label: "Interested", nextId: "okta_question", sentiment: "positive" }
         ]
       },
       refusal_1: {
@@ -73,10 +73,10 @@ const defaultScript = {
       },
       okta_question: {
         id: "okta_question",
-        text: "Basically, the work is that you continue doing your usual job, but with a tool you already have access to. Do you use the Discord Okta panel?",
+        text: "Basically, the job is just to use your discord Okta panel and you get paid. Do you use it often ?",
         responses: [
           { label: "No", nextId: "okta_explain", sentiment: "neutral" },
-          { label: "Yes", nextId: "okta_known", sentiment: "negative" }
+          { label: "Yes", nextId: "okta_known", sentiment: "positive" }
         ]
       },
       okta_explain: {
@@ -99,7 +99,7 @@ const defaultScript = {
         text: "Alright, then you're aware of the possibilities of what can be done there, right?",
         responses: [
           { label: "No", nextId: "badge_explain", sentiment: "neutral" },
-          { label: "Yes", nextId: "badge_offer", sentiment: "negative" }
+          { label: "Yes", nextId: "badge_offer", sentiment: "positive" }
         ]
       },
       badge_explain: {
@@ -114,7 +114,7 @@ const defaultScript = {
         text: "What I want you to do is give me badges. Do you know what a badge is?",
         responses: [
           { label: "No", nextId: "badge_definition", sentiment: "neutral" },
-          { label: "Yes", nextId: "badge_value", sentiment: "negative" }
+          { label: "Yes", nextId: "badge_value", sentiment: "positive" }
         ]
       },
       badge_definition: {
@@ -137,7 +137,7 @@ const defaultScript = {
         text: "You assign a badge to my account, and I pay you.",
         responses: [
           { label: "No", nextId: "money_pressure", sentiment: "positive" },
-          { label: "Yes", nextId: "price_list", sentiment: "negative" }
+          { label: "Yes", nextId: "price_list", sentiment: "positive" }
         ]
       },
       money_pressure: {
@@ -157,9 +157,9 @@ const defaultScript = {
       },
       switch_app: {
         id: "switch_app",
-        text: "I can't continue on this number since it's temporary. Do you use Telegram or Signal?",
+        text: "I can't continue on this number since it's a burner phone. Do you use Telegram or Signal?",
         responses: [
-          { label: "Yes", nextId: "send_contact", sentiment: "negative" },
+          { label: "Yes", nextId: "send_contact", sentiment: "positive" },
           { label: "No", nextId: "install_app", sentiment: "neutral" }
         ]
       },
@@ -172,7 +172,7 @@ const defaultScript = {
         id: "install_app",
         text: "Would you like me to guide you through installing one of those apps so we can talk anonymously?",
         responses: [
-          { label: "No", nextId: "money_pressure", sentiment: "positive" }
+          { label: "No", nextId: "money_pressure", sentiment: "negative" }
         ]
       },
       badge_awareness: {
@@ -180,7 +180,7 @@ const defaultScript = {
         text: "Great. Now, are you familiar with what badges are on Discord profiles?",
         responses: [
           { label: "No", nextId: "badge_definition", sentiment: "neutral" },
-          { label: "Yes", nextId: "badge_offer", sentiment: "negative" }
+          { label: "Yes", nextId: "badge_offer", sentiment: "positive" }
         ]
       }
     }
