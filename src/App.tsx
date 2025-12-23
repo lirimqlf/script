@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, BookOpen, Clock, X, RotateCcw, BarChart3, User, Upload, Download, TrendingUp, TrendingDown, Activity, Menu, LogOut, LogIn } from 'lucide-react';
+import { Phone, BookOpen, Clock, X, RotateCcw, BarChart3, User, Upload, Download, TrendingUp, TrendingDown, Activity, Menu, LogOut, LogIn, Inbox, Send, RefreshCw } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 interface ProfileForm {
@@ -88,6 +88,9 @@ const storage = {
   }
 };
 
+// API Configuration
+const API_BASE_URL = 'http://localhost:5000/api';
+
 const ColdCallApp: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -98,6 +101,7 @@ const ColdCallApp: React.FC = () => {
   const [callActive, setCallActive] = useState<boolean>(false);
   const [callHistory, setCallHistory] = useState<Call[]>([]);
   const [currentCall, setCurrentCall] = useState<Call | null>(null);
+  const [inboxProfiles, setInboxProfiles] = useState<ProfileForm[]>([]);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [activeScript, setActiveScript] = useState<Script | null>(null);
   const [activeView, setActiveView] = useState<string>('call');
@@ -439,6 +443,59 @@ const ColdCallApp: React.FC = () => {
     });
   };
 
+  // Telegram Bot API Functions
+  const fetchInboxProfiles = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/inbox`);
+      const data = await response.json();
+      setInboxProfiles(data.profiles || []);
+    } catch (error) {
+      console.error('Error fetching inbox:', error);
+    }
+  };
+
+  const loadProfileFromInbox = (profile: ProfileForm, index: number) => {
+    setProfile(profile);
+    setProfileForm(profile);
+    // Remove from inbox after loading
+    removeFromInbox(index);
+    alert('Profile loaded successfully!');
+  };
+
+  const removeFromInbox = async (index: number) => {
+    try {
+      await fetch(`${API_BASE_URL}/inbox/${index}`, { method: 'DELETE' });
+      fetchInboxProfiles();
+    } catch (error) {
+      console.error('Error removing from inbox:', error);
+    }
+  };
+
+  const submitCallResultToTelegram = async (callData: Call) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/call-result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(callData)
+      });
+      const data = await response.json();
+      if (data.success) {
+        console.log('Call result sent to Telegram');
+      }
+    } catch (error) {
+      console.error('Error submitting to Telegram:', error);
+    }
+  };
+
+  // Load inbox profiles periodically
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchInboxProfiles();
+      const interval = setInterval(fetchInboxProfiles, 10000); // Refresh every 10 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated]);
+
   const replaceProfilePlaceholders = (text: string): string => {
     if (!profile) return text;
     return text
@@ -503,6 +560,10 @@ const ColdCallApp: React.FC = () => {
     };
 
     setCallHistory([completedCall, ...callHistory]);
+    
+    // Submit to Telegram
+    submitCallResultToTelegram(completedCall);
+    
     setCallActive(false);
     setCurrentCall(null);
     setCurrentNode('start');
@@ -798,6 +859,21 @@ const ColdCallApp: React.FC = () => {
               {sidebarOpen && <span className="font-medium">Analytics</span>}
             </button>
 
+            <button
+              onClick={() => setActiveView('inbox')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-full transition-all duration-200 ${
+                activeView === 'inbox' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+              }`}
+            >
+              <Inbox size={20} />
+              {sidebarOpen && <span className="font-medium">Inbox</span>}
+              {sidebarOpen && inboxProfiles.length > 0 && (
+                <span className="ml-auto bg-white text-black text-xs px-2 py-1 rounded-full font-bold">
+                  {inboxProfiles.length}
+                </span>
+              )}
+            </button>
+
             <div className="pt-6 mt-6 border-t border-neutral-800">
               <button
                 onClick={() => setShowProfileModal(true)}
@@ -842,6 +918,7 @@ const ColdCallApp: React.FC = () => {
                 {activeView === 'scripts' && 'Scripts'}
                 {activeView === 'history' && 'History'}
                 {activeView === 'analytics' && 'Analytics'}
+                {activeView === 'inbox' && 'Inbox'}
               </h1>
             </div>
 
@@ -1379,6 +1456,96 @@ const ColdCallApp: React.FC = () => {
                   </div>
                   <p className="text-neutral-400 text-lg font-medium">No data available yet</p>
                   <p className="text-neutral-500 text-sm mt-2">Complete some calls to see analytics</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeView === 'inbox' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Profile Inbox</h2>
+                <button
+                  onClick={fetchInboxProfiles}
+                  className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
+                >
+                  <RefreshCw size={18} />
+                  REFRESH
+                </button>
+              </div>
+
+              {inboxProfiles.length === 0 ? (
+                <div className="text-center py-20">
+                  <div className="w-20 h-20 bg-neutral-900 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Inbox size={36} className="text-neutral-600" />
+                  </div>
+                  <h3 className="text-2xl font-bold mb-3">Inbox is Empty</h3>
+                  <p className="text-neutral-400 mb-6">Send profiles via Telegram bot to see them here</p>
+                  <div className="bg-neutral-950 rounded-2xl p-6 max-w-md mx-auto border border-neutral-800">
+                    <h4 className="font-bold mb-3">How to send profiles:</h4>
+                    <ol className="text-left text-sm text-neutral-400 space-y-2">
+                      <li>1. Open your Telegram bot</li>
+                      <li>2. Send a JSON file with profile data</li>
+                      <li>3. Profile will appear here automatically</li>
+                      <li>4. Click "Load Profile" to use it</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {inboxProfiles.map((profile, idx) => (
+                    <div key={idx} className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-black text-lg font-bold">
+                              {getInitials(profile.firstName, profile.lastName)}
+                            </span>
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-xl font-bold mb-2">
+                              {profile.firstName} {profile.lastName}
+                            </h3>
+                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                              <div>
+                                <span className="text-neutral-400">Company:</span>
+                                <span className="ml-2 text-white">{profile.company || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-neutral-400">Position:</span>
+                                <span className="ml-2 text-white">{profile.position || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-neutral-400">Phone:</span>
+                                <span className="ml-2 text-white">{profile.phoneNumber || 'N/A'}</span>
+                              </div>
+                              <div>
+                                <span className="text-neutral-400">Location:</span>
+                                <span className="ml-2 text-white">
+                                  {profile.city && profile.state ? `${profile.city}, ${profile.state}` : 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => loadProfileFromInbox(profile, idx)}
+                            className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
+                          >
+                            <Send size={18} />
+                            LOAD PROFILE
+                          </button>
+                          <button
+                            onClick={() => removeFromInbox(idx)}
+                            className="px-6 py-3 bg-neutral-900 border border-neutral-800 text-neutral-400 font-bold rounded-full hover:bg-neutral-800 transition-all"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
