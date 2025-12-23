@@ -13,18 +13,9 @@ let inboxProfiles = [];
 
 // Initialize Telegram Bot (webhook mode for Vercel serverless)
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const VERCEL_URL = process.env.VERCEL_URL || '';
 const bot = new TelegramBot(TELEGRAM_TOKEN);
 
-// Set webhook (only in production)
-if (VERCEL_URL) {
-  const webhookUrl = `https://${VERCEL_URL}/api/webhook`;
-  bot.setWebHook(webhookUrl).then(() => {
-    console.log('Webhook set to:', webhookUrl);
-  }).catch(err => {
-    console.error('Failed to set webhook:', err);
-  });
-}
+// Webhook will be set manually via /api/setup endpoint
 
 // Webhook endpoint for Telegram
 app.post('/api/webhook', async (req, res) => {
@@ -271,9 +262,50 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     profiles: inboxProfiles.length,
-    telegram: !!TELEGRAM_TOKEN,
-    webhook: !!VERCEL_URL
+    telegram: !!TELEGRAM_TOKEN
   });
+});
+
+// Setup webhook endpoint - call this once after deploying
+app.get('/api/setup', async (req, res) => {
+  try {
+    const webhookUrl = `https://script-nine-orcin.vercel.app/api/webhook`;
+    const result = await bot.setWebHook(webhookUrl);
+    
+    if (result) {
+      res.json({ 
+        success: true, 
+        message: 'Webhook configured successfully!',
+        webhookUrl: webhookUrl,
+        note: 'Your bot is now ready to receive messages'
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        message: 'Failed to set webhook' 
+      });
+    }
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Check webhook status
+app.get('/api/webhook-info', async (req, res) => {
+  try {
+    const info = await bot.getWebHookInfo();
+    res.json({
+      webhookUrl: info.url,
+      pendingUpdates: info.pending_update_count,
+      lastError: info.last_error_message || 'None',
+      lastErrorDate: info.last_error_date || 'N/A'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Export for Vercel serverless
