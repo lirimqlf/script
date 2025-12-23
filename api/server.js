@@ -39,8 +39,31 @@ app.post('/api/webhook', async (req, res) => {
       // Handle /start command
       if (text === '/start') {
         await bot.sendMessage(chatId, 
-          '👋 Welcome to @Vaulted Cold Call Manager Bot!\n\n' +
-          '📋 To add a profile, send a JSON file with this format:\n\n' +
+          '👋 *Welcome to @Vaulted Cold Call Manager Bot!*\n\n' +
+          '🎯 *Available Commands:*\n' +
+          '• `/upload` - Ready to upload a profile\n' +
+          '• `/profiles` - View all profiles in inbox\n' +
+          '• `/clear` - Clear all profiles\n' +
+          '• `/help` - Show profile format\n\n' +
+          '💡 Start by typing `/upload` to add a profile!',
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      // Handle /upload command
+      else if (text === '/upload') {
+        await bot.sendMessage(chatId,
+          '📤 *Ready to Upload!*\n\n' +
+          '📋 Send me a JSON file with the profile information.\n\n' +
+          '✅ I\'ll confirm when it\'s uploaded successfully!',
+          { parse_mode: 'Markdown' }
+        );
+      }
+
+      // Handle /help command
+      else if (text === '/help') {
+        await bot.sendMessage(chatId,
+          '📋 *Profile JSON Format:*\n\n' +
           '```json\n' +
           '{\n' +
           '  "firstName": "John",\n' +
@@ -49,11 +72,12 @@ app.post('/api/webhook', async (req, res) => {
           '  "position": "Senior Developer",\n' +
           '  "phoneNumber": "+1 (555) 123-4567",\n' +
           '  "city": "San Francisco",\n' +
-          '  "state": "CA",\n' +
-          '  "timezone": "PT"\n' +
+          '  "state": "CA"\n' +
           '}\n' +
           '```\n\n' +
-          '✅ The profile will appear in your app\'s inbox!',
+          '📝 *Required fields:* firstName, lastName\n' +
+          '📝 *Optional fields:* company, position, phoneNumber, city, state\n\n' +
+          '💾 Save this as a .json file and send it to me!',
           { parse_mode: 'Markdown' }
         );
       }
@@ -61,11 +85,18 @@ app.post('/api/webhook', async (req, res) => {
       // Handle /profiles command
       else if (text === '/profiles') {
         if (inboxProfiles.length === 0) {
-          await bot.sendMessage(chatId, '📭 No profiles in inbox currently.');
+          await bot.sendMessage(chatId, 
+            '📭 *Inbox is Empty*\n\n' +
+            'No profiles uploaded yet.\n\n' +
+            '💡 Type `/upload` to add a profile!',
+            { parse_mode: 'Markdown' }
+          );
         } else {
           let message = `📋 *Current Profiles (${inboxProfiles.length}):*\n\n`;
           inboxProfiles.forEach((profile, idx) => {
-            message += `${idx + 1}. ${profile.firstName} ${profile.lastName} - ${profile.company}\n`;
+            message += `${idx + 1}. *${profile.firstName} ${profile.lastName}*\n`;
+            message += `   🏢 ${profile.company || 'No company'}\n`;
+            message += `   📞 ${profile.phoneNumber || 'No phone'}\n\n`;
           });
           await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         }
@@ -75,7 +106,12 @@ app.post('/api/webhook', async (req, res) => {
       else if (text === '/clear') {
         const count = inboxProfiles.length;
         inboxProfiles = [];
-        await bot.sendMessage(chatId, `🗑️ Cleared ${count} profile(s) from inbox.`);
+        await bot.sendMessage(chatId, 
+          `🗑️ *Inbox Cleared!*\n\n` +
+          `Removed ${count} profile(s) from inbox.\n\n` +
+          `💡 Type \`/upload\` to add new profiles.`,
+          { parse_mode: 'Markdown' }
+        );
       }
 
       // Handle document uploads
@@ -83,9 +119,17 @@ app.post('/api/webhook', async (req, res) => {
         const document = msg.document;
 
         if (!document.file_name.endsWith('.json')) {
-          await bot.sendMessage(chatId, '❌ Please send a JSON file (.json extension)');
+          await bot.sendMessage(chatId, 
+            '❌ *Error: Invalid File Type*\n\n' +
+            'Please send a JSON file (.json extension)\n\n' +
+            '💡 Tip: Type `/help` to see the correct format',
+            { parse_mode: 'Markdown' }
+          );
           return res.status(200).send('OK');
         }
+
+        // Show processing message
+        const processingMsg = await bot.sendMessage(chatId, '⏳ Processing your profile...');
 
         try {
           const fileLink = await bot.getFileLink(document.file_id);
@@ -97,7 +141,15 @@ app.post('/api/webhook', async (req, res) => {
           const hasRequiredFields = requiredFields.every(field => profileData[field]);
 
           if (!hasRequiredFields) {
-            await bot.sendMessage(chatId, '❌ Invalid profile format. Must include firstName and lastName.');
+            await bot.deleteMessage(chatId, processingMsg.message_id);
+            await bot.sendMessage(chatId, 
+              '❌ *Error: Missing Required Fields*\n\n' +
+              'Your profile must include:\n' +
+              '• firstName\n' +
+              '• lastName\n\n' +
+              '💡 Type `/help` to see the correct format',
+              { parse_mode: 'Markdown' }
+            );
             return res.status(200).send('OK');
           }
 
@@ -112,17 +164,35 @@ app.post('/api/webhook', async (req, res) => {
             timezone: profileData.timezone || ''
           });
 
+          // Delete processing message
+          await bot.deleteMessage(chatId, processingMsg.message_id);
+
+          // Send success message with profile details
           await bot.sendMessage(
             chatId,
-            `✅ Profile added successfully!\n\n` +
-            `👤 ${profileData.firstName} ${profileData.lastName}\n` +
-            `🏢 ${profileData.company || 'N/A'}\n` +
-            `📍 ${profileData.city && profileData.state ? `${profileData.city}, ${profileData.state}` : 'N/A'}\n\n` +
-            `📥 Check your app's inbox to load this profile!`
+            '✅ *Profile Uploaded Successfully!*\n\n' +
+            '👤 *Name:* ' + profileData.firstName + ' ' + profileData.lastName + '\n' +
+            '🏢 *Company:* ' + (profileData.company || 'Not provided') + '\n' +
+            '💼 *Position:* ' + (profileData.position || 'Not provided') + '\n' +
+            '📞 *Phone:* ' + (profileData.phoneNumber || 'Not provided') + '\n' +
+            '📍 *Location:* ' + (profileData.city && profileData.state ? `${profileData.city}, ${profileData.state}` : 'Not provided') + '\n\n' +
+            '📥 *Next Steps:*\n' +
+            '1. Open your app: script-nine-orcin.vercel.app\n' +
+            '2. Go to the "Inbox" tab\n' +
+            '3. Click "LOAD PROFILE" to use it\n\n' +
+            '🎯 Total profiles in inbox: ' + inboxProfiles.length,
+            { parse_mode: 'Markdown' }
           );
         } catch (error) {
+          await bot.deleteMessage(chatId, processingMsg.message_id);
           console.error('Error processing document:', error);
-          await bot.sendMessage(chatId, `❌ Error processing file: ${error.message}`);
+          await bot.sendMessage(chatId, 
+            '❌ *Error Processing File*\n\n' +
+            'Make sure your file is valid JSON format.\n\n' +
+            'Error: ' + error.message + '\n\n' +
+            '💡 Type `/help` to see the correct format',
+            { parse_mode: 'Markdown' }
+          );
         }
       }
     }
