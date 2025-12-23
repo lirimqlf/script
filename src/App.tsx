@@ -1724,9 +1724,8 @@ ${emoji} **Call Result: ${outcome.toUpperCase()}**
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
 export default ColdCallApp;
