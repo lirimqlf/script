@@ -90,10 +90,7 @@ const storage = {
 
 // API Configuration - use environment variable or fallback to localhost
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
-// Telegram Configuration - Replace with your values!
-const TELEGRAM_BOT_TOKEN = '8534808862:AAErgsxI2IjvNUOR-X5CKP1MfC0C1_ZG3Ng';
-const TELEGRAM_GROUP_ID = '-5043830740';
-const ColdCallApp: React.FC = () => {
+
 const ColdCallApp: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -541,62 +538,6 @@ const ColdCallApp: React.FC = () => {
     }
   };
 
-// Send call result to Telegram
-const sendToTelegram = async (callData: Call) => {
-  if (TELEGRAM_BOT_TOKEN === 'YOUR_BOT_TOKEN_HERE') {
-    console.warn('⚠️ Update your Telegram credentials!');
-    return;
-  }
-
-  try {
-    const outcome = callData.outcome || 'unknown';
-    const profile = callData.profile || {};
-    const stats = callData.stats || { positive: 0, negative: 0, neutral: 0, sentimentScore: 0 };
-    const duration = callData.duration || 0;
-    
-    const minutes = Math.floor(duration / 60);
-    const seconds = duration % 60;
-    const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    
-    const emoji = outcome === 'won' ? '🎉' : outcome === 'lost' ? '❌' : '📝';
-    
-    const message = `
-${emoji} **Call Result: ${outcome.toUpperCase()}**
-
-**Contact:**
-- Name: ${profile.firstName || 'N/A'} ${profile.lastName || 'N/A'}
-- Company: ${profile.company || 'N/A'}
-- Phone: ${profile.phoneNumber || 'N/A'}
-
-**Call Details:**
-- Script: ${callData.scriptName}
-- Duration: ${durationStr}
-
-**Sentiment:**
-- Positive: ${stats.positive} 👍
-- Negative: ${stats.negative} 👎
-- Neutral: ${stats.neutral} 😐
-- Score: ${stats.sentimentScore}
-
-**Notes:** ${callData.notes || 'No notes'}
-    `.trim();
-
-    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-    await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_GROUP_ID,
-        text: message,
-        parse_mode: 'Markdown'
-      })
-    });
-
-    console.log('✅ Sent to Telegram!');
-  } catch (error) {
-    console.error('❌ Telegram error:', error);
-  }
-};
   const endCall = (outcome: string) => {
     const endTime = new Date().toISOString();
     const duration = Math.floor((new Date(endTime).getTime() - new Date(currentCall!.startTime).getTime()) / 1000);
@@ -617,7 +558,7 @@ ${emoji} **Call Result: ${outcome.toUpperCase()}**
         sentimentScore: positiveCount - negativeCount
       }
     };
-    sendToTelegram(completedCall);
+
     setCallHistory([completedCall, ...callHistory]);
     
     // Submit to Telegram
@@ -1724,8 +1665,9 @@ ${emoji} **Call Result: ${outcome.toUpperCase()}**
             </div>
           </div>
         </div>
-      </div>
-    );
-  };
+      )}
+    </div>
+  );
+};
 
 export default ColdCallApp;
