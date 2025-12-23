@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 
@@ -11,11 +10,86 @@ app.use(express.json());
 // In-memory storage for profiles
 let inboxProfiles = [];
 
-// Initialize Telegram Bot (webhook mode for Vercel serverless)
+// Telegram Bot Token
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const bot = new TelegramBot(TELEGRAM_TOKEN);
+const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
 
-// Webhook will be set manually via /api/setup endpoint
+// Helper function to send Telegram messages
+async function sendTelegramMessage(chatId, text, options = {}) {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: text,
+        parse_mode: options.parse_mode || 'Markdown'
+      })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error sending message:', error);
+    throw error;
+  }
+}
+
+// Helper function to delete Telegram messages
+async function deleteTelegramMessage(chatId, messageId) {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId
+      })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error deleting message:', error);
+  }
+}
+
+// Helper function to get file link
+async function getTelegramFileLink(fileId) {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/getFile?file_id=${fileId}`);
+    const data = await response.json();
+    if (data.ok) {
+      return `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${data.result.file_path}`;
+    }
+    throw new Error('Failed to get file');
+  } catch (error) {
+    console.error('Error getting file:', error);
+    throw error;
+  }
+}
+
+// Helper function to set webhook
+async function setWebhook(url) {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url })
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error setting webhook:', error);
+    throw error;
+  }
+}
+
+// Helper function to get webhook info
+async function getWebhookInfo() {
+  try {
+    const response = await fetch(`${TELEGRAM_API}/getWebhookInfo`);
+    return await response.json();
+  } catch (error) {
+    console.error('Error getting webhook info:', error);
+    throw error;
+  }
+}
 
 // Webhook endpoint for Telegram
 app.post('/api/webhook', async (req, res) => {
@@ -29,31 +103,29 @@ app.post('/api/webhook', async (req, res) => {
 
       // Handle /start command
       if (text === '/start') {
-        await bot.sendMessage(chatId, 
+        await sendTelegramMessage(chatId, 
           '👋 *Welcome to @Vaulted Cold Call Manager Bot!*\n\n' +
           '🎯 *Available Commands:*\n' +
           '• `/upload` - Ready to upload a profile\n' +
           '• `/profiles` - View all profiles in inbox\n' +
           '• `/clear` - Clear all profiles\n' +
           '• `/help` - Show profile format\n\n' +
-          '💡 Start by typing `/upload` to add a profile!',
-          { parse_mode: 'Markdown' }
+          '💡 Start by typing `/upload` to add a profile!'
         );
       }
 
       // Handle /upload command
       else if (text === '/upload') {
-        await bot.sendMessage(chatId,
+        await sendTelegramMessage(chatId,
           '📤 *Ready to Upload!*\n\n' +
           '📋 Send me a JSON file with the profile information.\n\n' +
-          '✅ I\'ll confirm when it\'s uploaded successfully!',
-          { parse_mode: 'Markdown' }
+          '✅ I\'ll confirm when it\'s uploaded successfully!'
         );
       }
 
       // Handle /help command
       else if (text === '/help') {
-        await bot.sendMessage(chatId,
+        await sendTelegramMessage(chatId,
           '📋 *Profile JSON Format:*\n\n' +
           '```json\n' +
           '{\n' +
@@ -68,19 +140,17 @@ app.post('/api/webhook', async (req, res) => {
           '```\n\n' +
           '📝 *Required fields:* firstName, lastName\n' +
           '📝 *Optional fields:* company, position, phoneNumber, city, state\n\n' +
-          '💾 Save this as a .json file and send it to me!',
-          { parse_mode: 'Markdown' }
+          '💾 Save this as a .json file and send it to me!'
         );
       }
 
       // Handle /profiles command
       else if (text === '/profiles') {
         if (inboxProfiles.length === 0) {
-          await bot.sendMessage(chatId, 
+          await sendTelegramMessage(chatId, 
             '📭 *Inbox is Empty*\n\n' +
             'No profiles uploaded yet.\n\n' +
-            '💡 Type `/upload` to add a profile!',
-            { parse_mode: 'Markdown' }
+            '💡 Type `/upload` to add a profile!'
           );
         } else {
           let message = `📋 *Current Profiles (${inboxProfiles.length}):*\n\n`;
@@ -89,7 +159,7 @@ app.post('/api/webhook', async (req, res) => {
             message += `   🏢 ${profile.company || 'No company'}\n`;
             message += `   📞 ${profile.phoneNumber || 'No phone'}\n\n`;
           });
-          await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+          await sendTelegramMessage(chatId, message);
         }
       }
 
@@ -97,11 +167,10 @@ app.post('/api/webhook', async (req, res) => {
       else if (text === '/clear') {
         const count = inboxProfiles.length;
         inboxProfiles = [];
-        await bot.sendMessage(chatId, 
+        await sendTelegramMessage(chatId, 
           `🗑️ *Inbox Cleared!*\n\n` +
           `Removed ${count} profile(s) from inbox.\n\n` +
-          `💡 Type \`/upload\` to add new profiles.`,
-          { parse_mode: 'Markdown' }
+          `💡 Type \`/upload\` to add new profiles.`
         );
       }
 
@@ -110,20 +179,19 @@ app.post('/api/webhook', async (req, res) => {
         const document = msg.document;
 
         if (!document.file_name.endsWith('.json')) {
-          await bot.sendMessage(chatId, 
+          await sendTelegramMessage(chatId, 
             '❌ *Error: Invalid File Type*\n\n' +
             'Please send a JSON file (.json extension)\n\n' +
-            '💡 Tip: Type `/help` to see the correct format',
-            { parse_mode: 'Markdown' }
+            '💡 Tip: Type `/help` to see the correct format'
           );
           return res.status(200).send('OK');
         }
 
         // Show processing message
-        const processingMsg = await bot.sendMessage(chatId, '⏳ Processing your profile...');
+        const processingMsg = await sendTelegramMessage(chatId, '⏳ Processing your profile...');
 
         try {
-          const fileLink = await bot.getFileLink(document.file_id);
+          const fileLink = await getTelegramFileLink(document.file_id);
           const response = await fetch(fileLink);
           const jsonText = await response.text();
           const profileData = JSON.parse(jsonText);
@@ -132,14 +200,15 @@ app.post('/api/webhook', async (req, res) => {
           const hasRequiredFields = requiredFields.every(field => profileData[field]);
 
           if (!hasRequiredFields) {
-            await bot.deleteMessage(chatId, processingMsg.message_id);
-            await bot.sendMessage(chatId, 
+            if (processingMsg.ok) {
+              await deleteTelegramMessage(chatId, processingMsg.result.message_id);
+            }
+            await sendTelegramMessage(chatId, 
               '❌ *Error: Missing Required Fields*\n\n' +
               'Your profile must include:\n' +
               '• firstName\n' +
               '• lastName\n\n' +
-              '💡 Type `/help` to see the correct format',
-              { parse_mode: 'Markdown' }
+              '💡 Type `/help` to see the correct format'
             );
             return res.status(200).send('OK');
           }
@@ -156,10 +225,12 @@ app.post('/api/webhook', async (req, res) => {
           });
 
           // Delete processing message
-          await bot.deleteMessage(chatId, processingMsg.message_id);
+          if (processingMsg.ok) {
+            await deleteTelegramMessage(chatId, processingMsg.result.message_id);
+          }
 
           // Send success message with profile details
-          await bot.sendMessage(
+          await sendTelegramMessage(
             chatId,
             '✅ *Profile Uploaded Successfully!*\n\n' +
             '👤 *Name:* ' + profileData.firstName + ' ' + profileData.lastName + '\n' +
@@ -171,18 +242,18 @@ app.post('/api/webhook', async (req, res) => {
             '1. Open your app: script-nine-orcin.vercel.app\n' +
             '2. Go to the "Inbox" tab\n' +
             '3. Click "LOAD PROFILE" to use it\n\n' +
-            '🎯 Total profiles in inbox: ' + inboxProfiles.length,
-            { parse_mode: 'Markdown' }
+            '🎯 Total profiles in inbox: ' + inboxProfiles.length
           );
         } catch (error) {
-          await bot.deleteMessage(chatId, processingMsg.message_id);
+          if (processingMsg.ok) {
+            await deleteTelegramMessage(chatId, processingMsg.result.message_id);
+          }
           console.error('Error processing document:', error);
-          await bot.sendMessage(chatId, 
+          await sendTelegramMessage(chatId, 
             '❌ *Error Processing File*\n\n' +
             'Make sure your file is valid JSON format.\n\n' +
             'Error: ' + error.message + '\n\n' +
-            '💡 Type `/help` to see the correct format',
-            { parse_mode: 'Markdown' }
+            '💡 Type `/help` to see the correct format'
           );
         }
       }
@@ -245,7 +316,7 @@ app.post('/api/call-result', async (req, res) => {
     const ADMIN_CHAT_ID = process.env.ADMIN_CHAT_ID;
     
     if (ADMIN_CHAT_ID) {
-      await bot.sendMessage(ADMIN_CHAT_ID, message, { parse_mode: 'Markdown' });
+      await sendTelegramMessage(ADMIN_CHAT_ID, message);
       res.json({ success: true });
     } else {
       console.log('No admin chat ID configured');
@@ -270,9 +341,9 @@ app.get('/api/health', (req, res) => {
 app.get('/api/setup', async (req, res) => {
   try {
     const webhookUrl = `https://script-nine-orcin.vercel.app/api/webhook`;
-    const result = await bot.setWebHook(webhookUrl);
+    const result = await setWebhook(webhookUrl);
     
-    if (result) {
+    if (result.ok) {
       res.json({ 
         success: true, 
         message: 'Webhook configured successfully!',
@@ -282,7 +353,8 @@ app.get('/api/setup', async (req, res) => {
     } else {
       res.json({ 
         success: false, 
-        message: 'Failed to set webhook' 
+        message: 'Failed to set webhook',
+        error: result.description
       });
     }
   } catch (error) {
@@ -296,13 +368,17 @@ app.get('/api/setup', async (req, res) => {
 // Check webhook status
 app.get('/api/webhook-info', async (req, res) => {
   try {
-    const info = await bot.getWebHookInfo();
-    res.json({
-      webhookUrl: info.url,
-      pendingUpdates: info.pending_update_count,
-      lastError: info.last_error_message || 'None',
-      lastErrorDate: info.last_error_date || 'N/A'
-    });
+    const info = await getWebhookInfo();
+    if (info.ok) {
+      res.json({
+        webhookUrl: info.result.url,
+        pendingUpdates: info.result.pending_update_count,
+        lastError: info.result.last_error_message || 'None',
+        lastErrorDate: info.result.last_error_date || 'N/A'
+      });
+    } else {
+      res.status(500).json({ error: 'Failed to get webhook info' });
+    }
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
