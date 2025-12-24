@@ -62,7 +62,6 @@ interface PathStep {
   sentiment: string;
 }
 
-// LocalStorage helper functions
 const storage = {
   get: (key: string): string | null => {
     try {
@@ -88,7 +87,6 @@ const storage = {
   }
 };
 
-// API Configuration - use environment variable or fallback to localhost
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://backendcoldcall.onrender.com';
 
 const ColdCallApp: React.FC = () => {
@@ -121,6 +119,12 @@ const ColdCallApp: React.FC = () => {
     state: '',
     timezone: ''
   });
+
+  const [timezoneTimes, setTimezoneTimes] = useState<Record<string, any>>({});
+  const [alarms, setAlarms] = useState<any[]>([]);
+  const [showAlarmModal, setShowAlarmModal] = useState(false);
+  const [alarmTime, setAlarmTime] = useState('10:30');
+  const [selectedTz, setSelectedTz] = useState('PT');
 
   const defaultScript: Script = {
     name: "Security Awareness Demo",
@@ -283,12 +287,10 @@ const ColdCallApp: React.FC = () => {
     }
   };
 
-  // Load user data on mount
   useEffect(() => {
     const loadUserData = () => {
       if (isAuthenticated && currentUser) {
         try {
-          // Load scripts
           const scriptsData = storage.get(`user:${currentUser.username}:scripts`);
           if (scriptsData) {
             const loadedScripts = JSON.parse(scriptsData);
@@ -301,13 +303,11 @@ const ColdCallApp: React.FC = () => {
             setActiveScript(defaultScript);
           }
 
-          // Load call history
           const historyData = storage.get(`user:${currentUser.username}:history`);
           if (historyData) {
             setCallHistory(JSON.parse(historyData));
           }
 
-          // Load profile
           const profileData = storage.get(`user:${currentUser.username}:profile`);
           if (profileData) {
             const loadedProfile = JSON.parse(profileData);
@@ -323,18 +323,12 @@ const ColdCallApp: React.FC = () => {
     loadUserData();
   }, [isAuthenticated, currentUser]);
 
-  // Auto-save user data
   useEffect(() => {
     const saveUserData = () => {
       if (isAuthenticated && currentUser) {
         try {
-          // Save scripts
           storage.set(`user:${currentUser.username}:scripts`, JSON.stringify(scripts));
-          
-          // Save call history
           storage.set(`user:${currentUser.username}:history`, JSON.stringify(callHistory));
-          
-          // Save profile
           if (profile) {
             storage.set(`user:${currentUser.username}:profile`, JSON.stringify(profile));
           }
@@ -356,12 +350,56 @@ const ColdCallApp: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    const US_TIMEZONES = [
+      { name: 'Eastern Time', abbr: 'ET', offset: -5 },
+      { name: 'Central Time', abbr: 'CT', offset: -6 },
+      { name: 'Mountain Time', abbr: 'MT', offset: -7 },
+      { name: 'Pacific Time', abbr: 'PT', offset: -8 }
+    ];
+
+    const updateTimes = () => {
+      const now = new Date();
+      const newTimes: Record<string, any> = {};
+      
+      US_TIMEZONES.forEach(tz => {
+        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        const tzTime = new Date(utc + (3600000 * tz.offset));
+        
+        const hours = tzTime.getHours();
+        const minutes = tzTime.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        
+        const isGoodTime = (hours >= 10 && hours < 12) || (hours >= 14 && hours < 16);
+        const isLunchTime = hours >= 12 && hours < 14;
+        const isTooEarly = hours < 9;
+        const isTooLate = hours >= 17;
+        
+        newTimes[tz.abbr] = {
+          fullName: tz.name,
+          time: `${displayHours}:${minutes} ${ampm}`,
+          hours: hours,
+          isGoodTime,
+          isLunchTime,
+          isTooEarly,
+          isTooLate
+        };
+      });
+      
+      setTimezoneTimes(newTimes);
+    };
+
+    updateTimes();
+    const interval = setInterval(updateTimes, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const handleLogin = () => {
     try {
       const userDataStr = storage.get(`auth:${loginForm.username}`);
       
       if (registerMode) {
-        // Register new user
         if (userDataStr) {
           alert('Username already exists');
           return;
@@ -378,7 +416,6 @@ const ColdCallApp: React.FC = () => {
         setIsAuthenticated(true);
         setLoginForm({ username: '', password: '' });
       } else {
-        // Login existing user
         if (!userDataStr) {
           alert('User not found');
           return;
@@ -443,7 +480,6 @@ const ColdCallApp: React.FC = () => {
     });
   };
 
-  // Telegram Bot API Functions
   const fetchInboxProfiles = async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/inbox`);
@@ -457,7 +493,6 @@ const ColdCallApp: React.FC = () => {
   const loadProfileFromInbox = (profile: ProfileForm, index: number) => {
     setProfile(profile);
     setProfileForm(profile);
-    // Remove from inbox after loading
     removeFromInbox(index);
     alert('Profile loaded successfully!');
   };
@@ -487,11 +522,37 @@ const ColdCallApp: React.FC = () => {
     }
   };
 
-  // Load inbox profiles periodically
+  const handleSetAlarm = async () => {
+    try {
+      const chatId = '8588673386';
+      
+      const response = await fetch(`${API_BASE_URL}/alarms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          time: alarmTime,
+          timezone: selectedTz,
+          message: '⏰ Time to start calling! Good luck!'
+        })
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setAlarms([...alarms, { time: alarmTime, timezone: selectedTz }]);
+        setShowAlarmModal(false);
+        alert('Alarm set! You\'ll get a Telegram message.');
+      }
+    } catch (error) {
+      console.error('Error setting alarm:', error);
+      alert('Failed to set alarm');
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated) {
       fetchInboxProfiles();
-      const interval = setInterval(fetchInboxProfiles, 10000); // Refresh every 10 seconds
+      const interval = setInterval(fetchInboxProfiles, 10000);
       return () => clearInterval(interval);
     }
   }, [isAuthenticated]);
@@ -560,8 +621,6 @@ const ColdCallApp: React.FC = () => {
     };
 
     setCallHistory([completedCall, ...callHistory]);
-    
-    // Submit to Telegram
     submitCallResultToTelegram(completedCall);
     
     setCallActive(false);
@@ -807,7 +866,6 @@ const ColdCallApp: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-black text-white flex">
-      {/* Sidebar */}
       <div className={`bg-neutral-950 border-r border-neutral-800 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-20'}`}>
         <div className="p-6">
           <div className="flex items-center gap-3 mb-12">
@@ -874,6 +932,16 @@ const ColdCallApp: React.FC = () => {
               )}
             </button>
 
+            <button
+              onClick={() => setActiveView('timezones')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-full transition-all duration-200 ${
+                activeView === 'timezones' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+              }`}
+            >
+              <Clock size={20} />
+              {sidebarOpen && <span className="font-medium">Timezones</span>}
+            </button>
+
             <div className="pt-6 mt-6 border-t border-neutral-800">
               <button
                 onClick={() => setShowProfileModal(true)}
@@ -903,9 +971,6 @@ const ColdCallApp: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Content - Rest of the component continues with same JSX as before... */}
-      {/* Due to length, I'll include the key parts. The full JSX is the same as the previous version */}
-      
       <div className="flex-1 flex flex-col">
         <div className="bg-neutral-950 border-b border-neutral-800 p-6">
           <div className="flex items-center justify-between">
@@ -919,6 +984,7 @@ const ColdCallApp: React.FC = () => {
                 {activeView === 'history' && 'History'}
                 {activeView === 'analytics' && 'Analytics'}
                 {activeView === 'inbox' && 'Inbox'}
+                {activeView === 'timezones' && 'Timezones'}
               </h1>
             </div>
 
@@ -948,7 +1014,6 @@ const ColdCallApp: React.FC = () => {
           </div>
         </div>
 
-        {/* Stats Bar */}
         {activeView === 'call' && (
           <div className="bg-neutral-950 border-b border-neutral-800 p-6">
             <div className="grid grid-cols-3 gap-6">
@@ -988,164 +1053,109 @@ const ColdCallApp: React.FC = () => {
           </div>
         )}
 
-        {/* Content Area */}
         <div className="flex-1 overflow-auto p-6">
-          {activeView === 'call' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
-                <div className="bg-neutral-950 rounded-3xl overflow-hidden border border-neutral-800 hover:border-neutral-700 transition-all duration-300">
-                  <div className="bg-neutral-900 border-b border-neutral-800 p-6">
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-bold">{activeScript?.name || 'No Script'}</h2>
-                      {callActive && (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-full">
-                          <div className="w-2 h-2 bg-black rounded-full animate-pulse"></div>
-                          <span className="text-sm font-bold">LIVE</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-8">
-                    {!callActive ? (
-                      <div className="text-center py-20">
-                        <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-                          <Phone className="text-black" size={36} />
-                        </div>
-                        <h3 className="text-2xl font-bold mb-3">Ready to Start</h3>
-                        <p className="text-neutral-400 mb-8">Begin your call with the active script</p>
-                        <button
-                          onClick={startCall}
-                          disabled={!activeScript}
-                          className="px-12 py-4 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                          START CALL
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="space-y-6">
-                        <div className="bg-white text-black p-6 rounded-3xl">
-                          <div className="text-xs font-bold uppercase tracking-wider mb-3 opacity-60">You Say:</div>
-                          <p className="text-lg leading-relaxed font-medium">
-                            {replaceProfilePlaceholders(currentNodeData?.text || '')}
-                          </p>
-                        </div>
-
-                        {currentNodeData?.responses && currentNodeData.responses.length > 0 && (
-                          <div className="space-y-3">
-                            <div className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-4">Response Options:</div>
-                            {currentNodeData.responses.map((response, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => handleResponse(response)}
-                                className="w-full text-left px-6 py-5 bg-neutral-900 border border-neutral-800 rounded-3xl hover:border-white hover:bg-neutral-800 transition-all group"
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-lg">{response.label}</span>
-                                  <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full ${
-                                    response.sentiment === 'positive' ? 'bg-white text-black' :
-                                    response.sentiment === 'negative' ? 'bg-neutral-800 text-neutral-400' :
-                                    'bg-neutral-800 text-neutral-400'
-                                  }`}>
-                                    {response.sentiment}
-                                  </span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {currentNodeData?.responses && currentNodeData.responses.length === 0 && (
-                          <div className="space-y-4 pt-6 border-t border-neutral-800">
-                            <div className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-4">End Call:</div>
-                            <div className="grid grid-cols-3 gap-4">
-                              <button
-                                onClick={() => endCall('won')}
-                                className="px-6 py-5 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all"
-                              >
-                                WON
-                              </button>
-                              <button
-                                onClick={() => endCall('lost')}
-                                className="px-6 py-5 bg-neutral-800 text-white font-bold rounded-full hover:bg-neutral-700 transition-all"
-                              >
-                                LOST
-                              </button>
-                              <button
-                                onClick={() => endCall('follow-up')}
-                                className="px-6 py-5 bg-neutral-700 text-white font-bold rounded-full hover:bg-neutral-600 transition-all"
-                              >
-                                FOLLOW-UP
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
+          {activeView === 'call' && callActive && currentNodeData && (
+            <div className="space-y-6">
+              <div className="bg-neutral-950 rounded-3xl p-8 border border-neutral-800">
+                <div className="mb-6">
+                  <div className="text-sm text-neutral-400 uppercase tracking-wider mb-2">Current Node</div>
+                  <div className="text-xl font-semibold">{replaceProfilePlaceholders(currentNodeData.text)}</div>
                 </div>
-              </div>
 
-              <div className="space-y-6">
-                {callActive && currentCall && (
-                  <div className="bg-neutral-950 rounded-3xl overflow-hidden border border-neutral-800">
-                    <div className="bg-neutral-900 border-b border-neutral-800 p-4">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">Live Stats</h3>
-                    </div>
-                    <div className="p-4 space-y-4">
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-neutral-900 p-3 border border-neutral-800 rounded-2xl">
-                          <div className="text-xs text-neutral-400 mb-1 font-bold">POS</div>
-                          <div className="text-2xl font-bold">
-                            {currentCall.sentiments.filter(s => s === 'positive').length}
-                          </div>
-                        </div>
-                        <div className="bg-neutral-900 p-3 border border-neutral-800 rounded-2xl">
-                          <div className="text-xs text-neutral-400 mb-1 font-bold">NEG</div>
-                          <div className="text-2xl font-bold">
-                            {currentCall.sentiments.filter(s => s === 'negative').length}
-                          </div>
-                        </div>
-                        <div className="bg-neutral-900 p-3 border border-neutral-800 rounded-2xl">
-                          <div className="text-xs text-neutral-400 mb-1 font-bold">NEU</div>
-                          <div className="text-2xl font-bold">
-                            {currentCall.sentiments.filter(s => s === 'neutral').length}
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Notes</label>
-                        <textarea
-                          value={callNotes}
-                          onChange={(e) => setCallNotes(e.target.value)}
-                          className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white text-sm text-white"
-                          rows={3}
-                          placeholder="Add notes..."
-                        />
-                      </div>
+                <div className="space-y-3">
+                  {currentNodeData.responses.map((response, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleResponse(response)}
+                      className="w-full px-6 py-4 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-2xl transition-all text-left font-medium flex items-center justify-between group"
+                    >
+                      <span>{response.label}</span>
+                      <span className={`text-xs px-3 py-1 rounded-full ${
+                        response.sentiment === 'positive' ? 'bg-green-900 text-green-200' :
+                        response.sentiment === 'negative' ? 'bg-red-900 text-red-200' :
+                        'bg-neutral-800 text-neutral-400'
+                      }`}>
+                        {response.sentiment}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {currentNodeData.responses.length === 0 && (
+                  <div className="text-center py-8">
+                    <div className="text-neutral-400 mb-4">End of script reached</div>
+                    <div className="flex gap-4 justify-center">
+                      <button
+                        onClick={() => endCall('won')}
+                        className="px-8 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all"
+                      >
+                        MARK AS WON
+                      </button>
+                      <button
+                        onClick={() => endCall('lost')}
+                        className="px-8 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all"
+                      >
+                        MARK AS LOST
+                      </button>
+                      <button
+                        onClick={() => endCall('follow-up')}
+                        className="px-8 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all"
+                      >
+                        FOLLOW-UP
+                      </button>
                     </div>
                   </div>
                 )}
+              </div>
 
-                <div className="bg-neutral-950 rounded-3xl overflow-hidden border border-neutral-800">
-                  <div className="bg-neutral-900 border-b border-neutral-800 p-4">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">Quick Stats</h3>
-                  </div>
-                  <div className="p-4 space-y-4">
-                    <div className="flex justify-between items-center pb-4 border-b border-neutral-800">
-                      <span className="text-sm text-neutral-400 font-bold uppercase tracking-wider">Total</span>
-                      <span className="font-bold text-3xl">{totalCalls}</span>
-                    </div>
-                    <div className="flex justify-between items-center pb-4 border-b border-neutral-800">
-                      <span className="text-sm text-neutral-400 font-bold uppercase tracking-wider">Win Rate</span>
-                      <span className="font-bold text-3xl">{winRate}%</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-neutral-400 font-bold uppercase tracking-wider">Avg Time</span>
-                      <span className="font-bold text-3xl">{Math.floor(avgDuration / 60)}:{(avgDuration % 60).toString().padStart(2, '0')}</span>
-                    </div>
+              <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                <div className="text-sm text-neutral-400 uppercase tracking-wider mb-4">Call Notes</div>
+                <textarea
+                  value={callNotes}
+                  onChange={(e) => setCallNotes(e.target.value)}
+                  className="w-full h-32 px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all resize-none text-white"
+                  placeholder="Add notes about this call..."
+                />
+              </div>
+
+              {callPath.length > 0 && (
+                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                  <div className="text-sm text-neutral-400 uppercase tracking-wider mb-4">Call Path</div>
+                  <div className="space-y-2">
+                    {callPath.map((step, idx) => (
+                      <div key={idx} className="flex items-center gap-3 text-sm">
+                        <span className="text-neutral-500">{idx + 1}.</span>
+                        <span className="text-white font-medium">{step.response}</span>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          step.sentiment === 'positive' ? 'bg-green-900 text-green-200' :
+                          step.sentiment === 'negative' ? 'bg-red-900 text-red-200' :
+                          'bg-neutral-800 text-neutral-400'
+                        }`}>
+                          {step.sentiment}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {activeView === 'call' && !callActive && (
+            <div className="text-center py-12">
+              <div className="bg-neutral-950 rounded-3xl p-12 border border-neutral-800 max-w-2xl mx-auto">
+                <Phone size={64} className="mx-auto mb-6 text-neutral-600" />
+                <h2 className="text-3xl font-bold mb-4">Ready to Start Calling</h2>
+                <p className="text-neutral-400 mb-8">
+                  {profile ? `Calling ${profile.firstName} ${profile.lastName} at ${profile.company}` : 'Load a profile to begin'}
+                </p>
+                <button
+                  onClick={startCall}
+                  disabled={!profile || !activeScript}
+                  className="px-12 py-4 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-lg"
+                >
+                  START CALL
+                </button>
               </div>
             </div>
           )}
@@ -1153,60 +1163,46 @@ const ColdCallApp: React.FC = () => {
           {activeView === 'scripts' && (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Script Library</h2>
-                <div className="flex gap-3">
-                  <button
-                    onClick={importScript}
-                    className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
-                  >
-                    <Upload size={18} />
-                    IMPORT SCRIPT
-                  </button>
-                  <button
-                    onClick={importAllData}
-                    className="px-6 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center gap-2"
-                  >
-                    <Upload size={18} />
-                    IMPORT BACKUP
-                  </button>
-                  <button
-                    onClick={exportAllData}
-                    className="px-6 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center gap-2"
-                  >
-                    <Download size={18} />
-                    EXPORT ALL
-                  </button>
-                </div>
+                <h2 className="text-2xl font-bold">Call Scripts</h2>
+                <button
+                  onClick={importScript}
+                  className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
+                >
+                  <Upload size={18} />
+                  IMPORT SCRIPT
+                </button>
               </div>
 
-              <div className="grid gap-4">
+              <div className="grid grid-cols-1 gap-6">
                 {scripts.map((script, idx) => (
-                  <div key={idx} className={`bg-neutral-950 rounded-3xl p-6 transition-all border-2 ${
-                    activeScript?.name === script.name ? 'border-white' : 'border-neutral-800 hover:border-neutral-700'
-                  }`}>
-                    <div className="flex items-center justify-between mb-4">
+                  <div key={idx} className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
+                    <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="text-xl font-bold mb-1">{script.name}</h3>
+                        <h3 className="text-xl font-bold mb-2">{script.name}</h3>
                         <p className="text-sm text-neutral-400">{Object.keys(script.nodes).length} nodes</p>
                       </div>
-                      <div className="flex gap-3">
+                      <div className="flex gap-2">
                         <button
                           onClick={() => setActiveScript(script)}
-                          className="px-5 py-2 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all text-sm"
+                          className={`px-4 py-2 rounded-full font-bold text-sm transition-all ${
+                            activeScript?.name === script.name
+                              ? 'bg-white text-black'
+                              : 'bg-neutral-900 hover:bg-neutral-800'
+                          }`}
                         >
-                          SELECT
+                          {activeScript?.name === script.name ? 'ACTIVE' : 'SELECT'}
                         </button>
                         <button
                           onClick={() => exportScript(script)}
-                          className="px-5 py-2 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all text-sm"
+                          className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 rounded-full font-bold text-sm transition-all"
                         >
                           <Download size={16} />
                         </button>
                         <button
                           onClick={() => deleteScript(script)}
-                          className="px-5 py-2 bg-neutral-900 border border-neutral-800 text-neutral-400 font-bold rounded-full hover:bg-neutral-800 transition-all text-sm"
+                          className="px-4 py-2 bg-neutral-900 hover:bg-red-900 rounded-full font-bold text-sm transition-all"
                         >
-                          DELETE
+                          <X size={16} />
                         </button>
                       </div>
                     </div>
@@ -1218,58 +1214,65 @@ const ColdCallApp: React.FC = () => {
 
           {activeView === 'history' && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold">Call History</h2>
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">Call History</h2>
+                <div className="text-sm text-neutral-400">{callHistory.length} total calls</div>
+              </div>
 
               {callHistory.length === 0 ? (
-                <div className="text-center py-20 text-neutral-400">
-                  <div className="w-20 h-20 bg-neutral-900 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Clock size={36} className="text-neutral-600" />
-                  </div>
-                  <p className="text-lg font-medium">No call history yet</p>
+                <div className="text-center py-12 bg-neutral-950 rounded-3xl border border-neutral-800">
+                  <Clock size={64} className="mx-auto mb-6 text-neutral-600" />
+                  <h3 className="text-2xl font-bold mb-2">No Calls Yet</h3>
+                  <p className="text-neutral-400">Your call history will appear here</p>
                 </div>
               ) : (
-                <div className="grid gap-4">
-                  {callHistory.map(call => (
-                    <div key={call.id} className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
+                <div className="space-y-4">
+                  {callHistory.map((call, idx) => (
+                    <div key={idx} className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
                       <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
+                        <div>
+                          <h3 className="text-lg font-bold mb-1">{call.scriptName}</h3>
+                          <p className="text-sm text-neutral-400">
+                            {new Date(call.startTime).toLocaleString()}
+                          </p>
                           {call.profile && (
-                            <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center flex-shrink-0">
-                              <span className="text-black text-sm font-bold">
-                                {getInitials(call.profile.firstName, call.profile.lastName)}
-                              </span>
-                            </div>
-                          )}
-                          <div>
-                            <h3 className="text-lg font-bold mb-1">{call.scriptName}</h3>
-                            <p className="text-sm text-neutral-400">
-                              {new Date(call.startTime).toLocaleString()}
+                            <p className="text-sm text-neutral-400 mt-1">
+                              {call.profile.firstName} {call.profile.lastName} at {call.profile.company}
                             </p>
-                            {call.profile && (
-                              <p className="text-sm text-neutral-400 mt-1">
-                                {call.profile.firstName} {call.profile.lastName} - {call.profile.phoneNumber}
-                              </p>
-                            )}
-                          </div>
+                          )}
                         </div>
-                        <div className="flex gap-3">
-                          <span className={`px-4 py-2 text-xs font-bold uppercase tracking-wider rounded-full ${
-                            call.outcome === 'won' ? 'bg-white text-black' :
-                            call.outcome === 'lost' ? 'bg-neutral-800 text-neutral-400' :
-                            'bg-neutral-700 text-white'
-                          }`}>
-                            {call.outcome}
-                          </span>
-                          <span className="px-4 py-2 bg-neutral-900 border border-neutral-800 text-xs font-bold rounded-full">
-                            {Math.floor((call.duration || 0) / 60)}:{((call.duration || 0) % 60).toString().padStart(2, '0')}
-                          </span>
+                        <span className={`px-4 py-2 rounded-full font-bold text-sm ${
+                          call.outcome === 'won' ? 'bg-green-900 text-green-200' :
+                          call.outcome === 'lost' ? 'bg-red-900 text-red-200' :
+                          'bg-yellow-900 text-yellow-200'
+                        }`}>
+                          {call.outcome?.toUpperCase()}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-4 mb-4">
+                        <div>
+                          <div className="text-xs text-neutral-400 mb-1">Duration</div>
+                          <div className="font-bold">{Math.floor((call.duration || 0) / 60)}m {(call.duration || 0) % 60}s</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-neutral-400 mb-1">Positive</div>
+                          <div className="font-bold text-green-400">{call.stats?.positive || 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-neutral-400 mb-1">Negative</div>
+                          <div className="font-bold text-red-400">{call.stats?.negative || 0}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-neutral-400 mb-1">Sentiment</div>
+                          <div className="font-bold">{call.stats?.sentimentScore || 0}</div>
                         </div>
                       </div>
 
                       {call.notes && (
-                        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 mt-4">
-                          <div className="text-xs text-neutral-400 mb-2 font-bold uppercase tracking-wider">Notes</div>
-                          <p className="text-sm text-neutral-300">{call.notes}</p>
+                        <div className="pt-4 border-t border-neutral-800">
+                          <div className="text-xs text-neutral-400 mb-2">Notes</div>
+                          <div className="text-sm">{call.notes}</div>
                         </div>
                       )}
                     </div>
@@ -1283,262 +1286,143 @@ const ColdCallApp: React.FC = () => {
             <div className="space-y-6">
               <h2 className="text-2xl font-bold">Analytics Dashboard</h2>
 
-              <div className="grid grid-cols-4 gap-6">
-                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider">Total Calls</div>
-                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                      <Phone size={20} className="text-black" />
-                    </div>
-                  </div>
-                  <div className="text-4xl font-bold">{totalCalls}</div>
-                  <div className="text-xs text-neutral-400 mt-2 flex items-center gap-1">
-                    <Activity size={12} />
-                    All time
-                  </div>
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                  <h3 className="text-lg font-bold mb-6">Call Outcomes</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={outcomeData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value }) => `${name}: ${value}`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {outcomeData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider">Won</div>
-                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                      <TrendingUp size={20} className="text-black" />
-                    </div>
-                  </div>
-                  <div className="text-4xl font-bold">{wonCalls}</div>
-                  <div className="text-xs text-neutral-400 mt-2 flex items-center gap-1">
-                    <TrendingUp size={12} />
-                    {totalCalls > 0 ? `${((wonCalls / totalCalls) * 100).toFixed(0)}% of total` : 'No data'}
-                  </div>
-                </div>
-                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider">Lost</div>
-                    <div className="w-10 h-10 bg-neutral-900 border border-neutral-800 rounded-full flex items-center justify-center">
-                      <TrendingDown size={20} className="text-neutral-400" />
-                    </div>
-                  </div>
-                  <div className="text-4xl font-bold">{lostCalls}</div>
-                  <div className="text-xs text-neutral-400 mt-2 flex items-center gap-1">
-                    <TrendingDown size={12} />
-                    {totalCalls > 0 ? `${((lostCalls / totalCalls) * 100).toFixed(0)}% of total` : 'No data'}
-                  </div>
-                </div>
-                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="text-xs text-neutral-400 font-bold uppercase tracking-wider">Win Rate</div>
-                    <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                      <BarChart3 size={20} className="text-black" />
-                    </div>
-                  </div>
-                  <div className="text-4xl font-bold">{winRate}%</div>
-                  <div className="text-xs text-neutral-400 mt-2">
-                    {wonCalls} won / {totalCalls} total
-                  </div>
+
+                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                  <h3 className="text-lg font-bold mb-6">Recent Sentiment Trends</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <AreaChart data={sentimentData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                      <XAxis dataKey="name" stroke="#666" />
+                      <YAxis stroke="#666" />
+                      <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333' }} />
+                      <Legend />
+                      <Area type="monotone" dataKey="positive" stackId="1" stroke="#22c55e" fill="#22c55e" />
+                      <Area type="monotone" dataKey="neutral" stackId="1" stroke="#666" fill="#666" />
+                      <Area type="monotone" dataKey="negative" stackId="1" stroke="#ef4444" fill="#ef4444" />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
 
-              {callHistory.length > 0 && (
-                <>
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
-                      <h3 className="text-lg font-bold mb-4">Call Outcomes</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={outcomeData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={100}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
-                            {outcomeData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip contentStyle={{ backgroundColor: '#171717', border: '1px solid #404040', borderRadius: '12px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
+              <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                <h3 className="text-lg font-bold mb-6">Performance Over Time</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={performanceData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                    <XAxis dataKey="call" stroke="#666" />
+                    <YAxis stroke="#666" />
+                    <Tooltip contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333' }} />
+                    <Legend />
+                    <Bar dataKey="duration" fill="#666" name="Duration (min)" />
+                    <Bar dataKey="sentiment" fill="#fff" name="Sentiment Score" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
 
-                    <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
-                      <h3 className="text-lg font-bold mb-4">Call Duration Trend</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <AreaChart data={performanceData}>
-                          <defs>
-                            <linearGradient id="colorDuration" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#ffffff" stopOpacity={0.8}/>
-                              <stop offset="95%" stopColor="#ffffff" stopOpacity={0.1}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#404040" />
-                          <XAxis dataKey="call" stroke="#737373" style={{ fontSize: '12px' }} />
-                          <YAxis stroke="#737373" style={{ fontSize: '12px' }} />
-                          <Tooltip 
-                            contentStyle={{ 
-                              backgroundColor: '#171717', 
-                              border: '1px solid #404040',
-                              borderRadius: '12px'
-                            }}
-                          />
-                          <Area 
-                            type="monotone" 
-                            dataKey="duration" 
-                            stroke="#ffffff" 
-                            fillOpacity={1} 
-                            fill="url(#colorDuration)" 
-                            strokeWidth={2}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
+              <div className="grid grid-cols-3 gap-6">
+                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                  <div className="flex items-center gap-3 mb-4">
+                    <TrendingUp size={24} className="text-green-400" />
+                    <div className="text-sm text-neutral-400">Average Duration</div>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
-                      <h3 className="text-lg font-bold mb-4">Sentiment Analysis</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={sentimentData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#404040" />
-                          <XAxis dataKey="name" stroke="#737373" style={{ fontSize: '12px' }} />
-                          <YAxis stroke="#737373" style={{ fontSize: '12px' }} />
-                          <Tooltip 
-                            contentStyle={{ 
-                              backgroundColor: '#171717', 
-                              border: '1px solid #404040',
-                              borderRadius: '12px'
-                            }}
-                          />
-                          <Legend />
-                          <Bar dataKey="positive" fill="#ffffff" radius={[8, 8, 0, 0]} />
-                          <Bar dataKey="negative" fill="#737373" radius={[8, 8, 0, 0]} />
-                          <Bar dataKey="neutral" fill="#404040" radius={[8, 8, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
-                      <h3 className="text-lg font-bold mb-4">Sentiment Score Over Time</h3>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <LineChart data={performanceData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#404040" />
-                          <XAxis dataKey="call" stroke="#737373" style={{ fontSize: '12px' }} />
-                          <YAxis stroke="#737373" style={{ fontSize: '12px' }} />
-                          <Tooltip 
-                            contentStyle={{ 
-                              backgroundColor: '#171717', 
-                              border: '1px solid #404040',
-                              borderRadius: '12px'
-                            }}
-                          />
-                          <Legend />
-                          <Line 
-                            type="monotone" 
-                            dataKey="sentiment" 
-                            stroke="#ffffff" 
-                            strokeWidth={3}
-                            dot={{ fill: '#ffffff', r: 5 }}
-                            activeDot={{ r: 7 }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {callHistory.length === 0 && (
-                <div className="bg-neutral-950 rounded-3xl p-12 border border-neutral-800 text-center">
-                  <div className="w-20 h-20 bg-neutral-900 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <BarChart3 size={36} className="text-neutral-600" />
-                  </div>
-                  <p className="text-neutral-400 text-lg font-medium">No data available yet</p>
-                  <p className="text-neutral-500 text-sm mt-2">Complete some calls to see analytics</p>
+                  <div className="text-3xl font-bold">{avgDuration}s</div>
                 </div>
-              )}
+
+                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                  <div className="flex items-center gap-3 mb-4">
+                    <Activity size={24} className="text-blue-400" />
+                    <div className="text-sm text-neutral-400">Total Interactions</div>
+                  </div>
+                  <div className="text-3xl font-bold">{callHistory.reduce((sum, c) => sum + c.sentiments.length, 0)}</div>
+                </div>
+
+                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                  <div className="flex items-center gap-3 mb-4">
+                    <TrendingDown size={24} className="text-red-400" />
+                    <div className="text-sm text-neutral-400">Loss Rate</div>
+                  </div>
+                  <div className="text-3xl font-bold">{totalCalls > 0 ? ((lostCalls / totalCalls) * 100).toFixed(1) : '0'}%</div>
+                </div>
+              </div>
             </div>
           )}
 
           {activeView === 'inbox' && (
             <div className="space-y-6">
               <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Profile Inbox</h2>
-                <button
-                  onClick={fetchInboxProfiles}
-                  className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
-                >
-                  <RefreshCw size={18} />
-                  REFRESH
-                </button>
+                <h2 className="text-2xl font-bold">Telegram Inbox</h2>
+                <div className="flex gap-3">
+                  <button
+                    onClick={fetchInboxProfiles}
+                    className="px-6 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center gap-2"
+                  >
+                    <RefreshCw size={18} />
+                    REFRESH
+                  </button>
+                </div>
               </div>
 
               {inboxProfiles.length === 0 ? (
-                <div className="text-center py-20">
-                  <div className="w-20 h-20 bg-neutral-900 rounded-full flex items-center justify-center mx-auto mb-6">
-                    <Inbox size={36} className="text-neutral-600" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-3">Inbox is Empty</h3>
-                  <p className="text-neutral-400 mb-6">Send profiles via Telegram bot to see them here</p>
-                  <div className="bg-neutral-950 rounded-2xl p-6 max-w-md mx-auto border border-neutral-800">
-                    <h4 className="font-bold mb-3">How to send profiles:</h4>
-                    <ol className="text-left text-sm text-neutral-400 space-y-2">
-                      <li>1. Open your Telegram bot</li>
-                      <li>2. Send a JSON file with profile data</li>
-                      <li>3. Profile will appear here automatically</li>
-                      <li>4. Click "Load Profile" to use it</li>
-                    </ol>
+                <div className="text-center py-12 bg-neutral-950 rounded-3xl border border-neutral-800">
+                  <Inbox size={64} className="mx-auto mb-6 text-neutral-600" />
+                  <h3 className="text-2xl font-bold mb-2">Inbox Empty</h3>
+                  <p className="text-neutral-400 mb-4">Send profiles via Telegram bot @pandrxdbot</p>
+                  <div className="text-sm text-neutral-500 bg-neutral-900 rounded-2xl p-4 max-w-md mx-auto">
+                    <p className="mb-2">Use /create to create a profile step-by-step</p>
+                    <p>Or /upload to send a JSON file</p>
                   </div>
                 </div>
               ) : (
-                <div className="grid gap-4">
-                  {inboxProfiles.map((profile, idx) => (
+                <div className="grid grid-cols-1 gap-4">
+                  {inboxProfiles.map((prof, idx) => (
                     <div key={idx} className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800 hover:border-neutral-700 transition-all">
                       <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-4 flex-1">
-                          <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center flex-shrink-0">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center">
                             <span className="text-black text-lg font-bold">
-                              {getInitials(profile.firstName, profile.lastName)}
+                              {prof.firstName.charAt(0)}{prof.lastName.charAt(0)}
                             </span>
                           </div>
-                          <div className="flex-1">
-                            <h3 className="text-xl font-bold mb-2">
-                              {profile.firstName} {profile.lastName}
-                            </h3>
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                              <div>
-                                <span className="text-neutral-400">Company:</span>
-                                <span className="ml-2 text-white">{profile.company || 'N/A'}</span>
-                              </div>
-                              <div>
-                                <span className="text-neutral-400">Position:</span>
-                                <span className="ml-2 text-white">{profile.position || 'N/A'}</span>
-                              </div>
-                              <div>
-                                <span className="text-neutral-400">Phone:</span>
-                                <span className="ml-2 text-white">{profile.phoneNumber || 'N/A'}</span>
-                              </div>
-                              <div>
-                                <span className="text-neutral-400">Location:</span>
-                                <span className="ml-2 text-white">
-                                  {profile.city && profile.state ? `${profile.city}, ${profile.state}` : 'N/A'}
-                                </span>
-                              </div>
-                            </div>
+                          <div>
+                            <h3 className="text-lg font-bold">{prof.firstName} {prof.lastName}</h3>
+                            <p className="text-sm text-neutral-400">{prof.position} at {prof.company}</p>
+                            <p className="text-sm text-neutral-500 mt-1">{prof.phoneNumber}</p>
+                            <p className="text-xs text-neutral-500">{prof.city}, {prof.state}</p>
                           </div>
                         </div>
-                        <div className="flex gap-3">
+                        <div className="flex gap-2">
                           <button
-                            onClick={() => loadProfileFromInbox(profile, idx)}
-                            className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
+                            onClick={() => loadProfileFromInbox(prof, idx)}
+                            className="px-6 py-2 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all"
                           >
-                            <Send size={18} />
-                            LOAD PROFILE
+                            LOAD
                           </button>
                           <button
                             onClick={() => removeFromInbox(idx)}
-                            className="px-6 py-3 bg-neutral-900 border border-neutral-800 text-neutral-400 font-bold rounded-full hover:bg-neutral-800 transition-all"
+                            className="px-4 py-2 bg-neutral-900 hover:bg-red-900 rounded-full transition-all"
                           >
                             <X size={18} />
                           </button>
@@ -1550,21 +1434,123 @@ const ColdCallApp: React.FC = () => {
               )}
             </div>
           )}
+
+          {activeView === 'timezones' && (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold">US Timezones</h2>
+                <button
+                  onClick={() => setShowAlarmModal(true)}
+                  className="px-6 py-3 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all flex items-center gap-2"
+                >
+                  <Clock size={18} />
+                  SET ALARM
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {Object.entries(timezoneTimes).map(([abbr, data]: [string, any]) => {
+                  const getStatus = () => {
+                    if (data.isTooEarly) return { text: 'Too Early', color: 'bg-red-900 text-red-200' };
+                    if (data.isTooLate) return { text: 'Too Late', color: 'bg-red-900 text-red-200' };
+                    if (data.isLunchTime) return { text: 'Lunch Time', color: 'bg-yellow-900 text-yellow-200' };
+                    if (data.isGoodTime) return { text: 'Best Time!', color: 'bg-green-900 text-green-200' };
+                    return { text: 'Okay', color: 'bg-neutral-800 text-neutral-400' };
+                  };
+                  
+                  const status = getStatus();
+                  
+                  return (
+                    <div 
+                      key={abbr}
+                      className={`bg-neutral-950 border-2 rounded-3xl p-6 transition-all ${
+                        data.isGoodTime ? 'border-green-500' : 'border-neutral-800'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h3 className="text-xl font-bold">{data.fullName}</h3>
+                          <p className="text-sm text-neutral-400">{abbr}</p>
+                        </div>
+                        <span className={`text-xs font-bold uppercase px-3 py-2 rounded-full ${status.color}`}>
+                          {status.text}
+                        </span>
+                      </div>
+                      
+                      <div className="text-4xl font-bold font-mono">
+                        {data.time}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {alarms.length > 0 && (
+                <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                  <h3 className="text-lg font-bold mb-4">Active Alarms</h3>
+                  <div className="space-y-3">
+                    {alarms.map((alarm, idx) => (
+                      <div key={idx} className="bg-neutral-900 rounded-2xl p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Clock size={20} />
+                          <div>
+                            <div className="font-bold">{alarm.time} {alarm.timezone}</div>
+                            <div className="text-xs text-neutral-400">Telegram notification enabled</div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setAlarms(alarms.filter((_, i) => i !== idx))}
+                          className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 rounded-full text-sm font-bold"
+                        >
+                          DELETE
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-neutral-950 rounded-3xl p-6 border border-neutral-800">
+                <h3 className="text-lg font-bold mb-4">📞 Best Calling Times</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                    <span className="text-sm">10:00 AM - 11:30 AM (Best)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                    <span className="text-sm">2:00 PM - 4:00 PM (Good)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 bg-yellow-500 rounded-full"></div>
+                    <span className="text-sm">12:00 PM - 2:00 PM (Lunch)</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                    <span className="text-sm">Before 9 AM / After 5 PM (Avoid)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {showProfileModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-6 animate-in fade-in duration-200">
-          <div className="bg-neutral-950 rounded-3xl max-w-2xl w-full border border-neutral-800 animate-in zoom-in-95 duration-200">
-            <div className="bg-neutral-900 border-b border-neutral-800 p-6 flex justify-between items-center rounded-t-3xl">
-              <h2 className="text-2xl font-bold">Contact Profile</h2>
-              <button onClick={() => setShowProfileModal(false)} className="p-2 hover:bg-neutral-800 rounded-full transition-all">
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-neutral-950 rounded-3xl max-w-2xl w-full border border-neutral-800 max-h-[90vh] overflow-auto">
+            <div className="bg-neutral-900 border-b border-neutral-800 p-6 flex justify-between items-center sticky top-0 rounded-t-3xl">
+              <h2 className="text-xl font-bold">Profile Settings</h2>
+              <button 
+                onClick={() => setShowProfileModal(false)} 
+                className="p-2 hover:bg-neutral-800 rounded-full transition-all"
+              >
                 <X size={24} />
               </button>
             </div>
 
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">First Name</label>
                   <input
@@ -1583,34 +1569,39 @@ const ColdCallApp: React.FC = () => {
                     className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
                   />
                 </div>
-                <div>
-                  <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Company</label>
-                  <input
-                    type="text"
-                    value={profileForm.company}
-                    onChange={(e) => setProfileForm({...profileForm, company: e.target.value})}
-                    className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Position</label>
-                  <input
-                    type="text"
-                    value={profileForm.position}
-                    onChange={(e) => setProfileForm({...profileForm, position: e.target.value})}
-                    className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
-                  />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Phone Number</label>
-                  <input
-                    type="text"
-                    value={profileForm.phoneNumber}
-                    onChange={(e) => setProfileForm({...profileForm, phoneNumber: e.target.value})}
-                    className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
-                    placeholder="+1 (555) 123-4567"
-                  />
-                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Company</label>
+                <input
+                  type="text"
+                  value={profileForm.company}
+                  onChange={(e) => setProfileForm({...profileForm, company: e.target.value})}
+                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Position</label>
+                <input
+                  type="text"
+                  value={profileForm.position}
+                  onChange={(e) => setProfileForm({...profileForm, position: e.target.value})}
+                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">Phone Number</label>
+                <input
+                  type="text"
+                  value={profileForm.phoneNumber}
+                  onChange={(e) => setProfileForm({...profileForm, phoneNumber: e.target.value})}
+                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">City</label>
                   <input
@@ -1631,24 +1622,24 @@ const ColdCallApp: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex gap-4 mb-4">
+              <div className="flex gap-4">
                 <button
                   onClick={importProfile}
                   className="flex-1 px-6 py-4 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center justify-center gap-2"
                 >
                   <Upload size={18} />
-                  IMPORT PROFILE
+                  IMPORT JSON
                 </button>
                 <button
                   onClick={exportProfile}
                   className="flex-1 px-6 py-4 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all flex items-center justify-center gap-2"
                 >
                   <Download size={18} />
-                  EXPORT PROFILE
+                  EXPORT JSON
                 </button>
               </div>
 
-              <div className="flex gap-4">
+              <div className="flex gap-4 pt-4 border-t border-neutral-800">
                 <button
                   onClick={saveProfile}
                   className="flex-1 px-6 py-4 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all"
@@ -1657,6 +1648,100 @@ const ColdCallApp: React.FC = () => {
                 </button>
                 <button
                   onClick={() => setShowProfileModal(false)}
+                  className="px-6 py-4 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all"
+                >
+                  CANCEL
+                </button>
+              </div>
+
+              <div className="pt-4 border-t border-neutral-800">
+                <div className="flex gap-4">
+                  <button
+                    onClick={exportAllData}
+                    className="flex-1 px-6 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all text-sm"
+                  >
+                    BACKUP ALL DATA
+                  </button>
+                  <button
+                    onClick={importAllData}
+                    className="flex-1 px-6 py-3 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all text-sm"
+                  >
+                    RESTORE DATA
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAlarmModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-neutral-950 rounded-3xl max-w-md w-full border border-neutral-800">
+            <div className="bg-neutral-900 border-b border-neutral-800 p-6 flex justify-between items-center rounded-t-3xl">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Clock size={20} />
+                Set Calling Alarm
+              </h2>
+              <button 
+                onClick={() => setShowAlarmModal(false)} 
+                className="p-2 hover:bg-neutral-800 rounded-full transition-all"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-6">
+                <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">
+                  Time
+                </label>
+                <input
+                  type="time"
+                  value={alarmTime}
+                  onChange={(e) => setAlarmTime(e.target.value)}
+                  className="w-full px-4 py-3 bg-neutral-900 border border-neutral-800 rounded-2xl focus:outline-none focus:border-white transition-all text-white text-lg font-mono"
+                />
+              </div>
+
+              <div className="mb-6">
+                <label className="text-xs text-neutral-400 block mb-2 font-bold uppercase tracking-wider">
+                  Timezone
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {['PT', 'MT', 'CT', 'ET'].map(tz => (
+                    <button
+                      key={tz}
+                      onClick={() => setSelectedTz(tz)}
+                      className={`px-4 py-3 rounded-2xl font-bold transition-all ${
+                        selectedTz === tz
+                          ? 'bg-white text-black'
+                          : 'bg-neutral-900 border border-neutral-800 hover:bg-neutral-800'
+                      }`}
+                    >
+                      {tz}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-neutral-900 rounded-2xl p-4 mb-6 border border-neutral-800">
+                <p className="text-sm text-neutral-400">
+                  📱 Bot will message you at{' '}
+                  <span className="text-white font-bold">{alarmTime}</span>{' '}
+                  <span className="text-white font-bold">{selectedTz}</span>
+                </p>
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={handleSetAlarm}
+                  className="flex-1 px-6 py-4 bg-white text-black font-bold rounded-full hover:bg-neutral-200 transition-all"
+                >
+                  SET ALARM
+                </button>
+                <button
+                  onClick={() => setShowAlarmModal(false)}
                   className="px-6 py-4 bg-neutral-900 border border-neutral-800 font-bold rounded-full hover:bg-neutral-800 transition-all"
                 >
                   CANCEL
